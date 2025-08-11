@@ -12,9 +12,9 @@ def prevent_modifications(sender, instance, **kwargs):
         )
 
 
-@receiver(pre_save)
-def block_save(sender, instance, **kwargs):
-    prevent_modifications(sender, instance, **kwargs)
+# @receiver(pre_save)
+# def block_save(sender, instance, **kwargs):
+#     prevent_modifications(sender, instance, **kwargs)
 
 
 @receiver(pre_delete)

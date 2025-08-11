@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-semibold">Repairs</h1>
+    <div class="flex space-x-2">
+        <form method="get" class="flex items-center space-x-2">
+            <input type="text" name="search" value="{{ search_query }}" class="p-2 border border-input rounded-l-md focus:outline-none focus:ring-2 focus:ring-primary-foreground" placeholder="Search repairs" />
+            <button type="submit" class="px-4 py-2 bg-secondary text-secondary-foreground rounded-r-md hover:bg-secondary-foreground hover:text-secondary">Search</button>
+        </form>
+        <button onclick="document.getElementById('add-repair-form').classList.toggle('hidden')" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">Add Repair</button>
+    </div>
+</div>
+<div id="add-repair-form" class="{% if edit_repair %}mb-6{% else %}hidden mb-6{% endif %}">
+<form method="post" class="space-y-4 bg-card p-4 rounded">
+     {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">{% if edit_repair %}Save Changes{% else %}Add Repair{% endif %}</button>
+</form>
+</div>
+
+<table class="min-w-full divide-y divide-border mb-6">
+     <thead>
+        <tr class="bg-secondary">
+             <th class="px-4 py-2 text-left text-secondary-foreground">Title</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Description</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Priority</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Status</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Reported By</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Assigned To</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Estimated Cost</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Reported Date</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Scheduled Date</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Category</th>
+             <th class="px-4 py-2 text-left text-secondary-foreground">Actions</th>
+         </tr>
+     </thead>
+     <tbody>
+        {% for repair in page_obj %}
+        <tr class="even:bg-muted">
+            <td class="px-4 py-2">{{ repair.title }}</td>
+            <td class="px-4 py-2">{{ repair.description }}</td>
+            <td class="px-4 py-2">{{ repair.priority }}</td>
+            <td class="px-4 py-2">{{ repair.status }}</td>
+            <td class="px-4 py-2">{{ repair.reported_by }}</td>
+            <td class="px-4 py-2">{{ repair.assigned_to }}</td>
+            <td class="px-4 py-2">${{ repair.estimated_cost }}</td>
+            <td class="px-4 py-2">{{ repair.reported_date }}</td>
+            <td class="px-4 py-2">{{ repair.scheduled_date|default:"-" }}</td>
+            <td class="px-4 py-2">{{ repair.category }}</td>
+            <td class="px-4 py-2 space-x-2">
+                <a href="{% url 'edit_repair' repair.id %}" class="px-2 py-1 bg-accent text-accent-foreground rounded hover:bg-accent-foreground hover:text-accent">Edit</a>
+                <a href="{% url 'delete_repair' repair.id %}" class="px-2 py-1 bg-destructive text-destructive-foreground rounded hover:bg-destructive-foreground hover:text-destructive" onclick="return confirm('Are you sure?');">Delete</a>
+            </td>
+        </tr>
+         {% empty %}
+        <tr><td colspan="11" class="px-4 py-2">No repairs found.</td></tr>
+         {% endfor %}
+     </tbody>
+ </table>
+
+<nav class="flex justify-center">
+    <ul class="inline-flex items-center space-x-1">
+        {% if page_obj.has_previous %}
+        <li>
+            <a class="px-3 py-1 border border-border rounded hover:bg-primary hover:text-primary-foreground" href="?page={{ page_obj.previous_page_number }}&search={{ search_query }}">Previous</a>
+        </li>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+        <li>
+            <a class="px-3 py-1 border border-border rounded {% if num == page_obj.number %}bg-primary text-primary-foreground{% else %}hover:bg-secondary hover:text-secondary-foreground{% endif %}" href="?page={{ num }}&search={{ search_query }}">{{ num }}</a>
+        </li>
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <li>
+            <a class="px-3 py-1 border border-border rounded hover:bg-primary hover:text-primary-foreground" href="?page={{ page_obj.next_page_number }}&search={{ search_query }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endblock %}

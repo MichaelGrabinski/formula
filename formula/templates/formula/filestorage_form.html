@@ -1,0 +1,22 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center">
+        <h2 class="text-xl font-semibold flex-1">{% trans "Create or Update File" %}</h2>
+    </div>
+
+    {% url 'filestorage_list' as cancel_url %}
+
+    {% component "unfold/components/card.html" %}
+        <form method="post" enctype="multipart/form-data" class="flex flex-col gap-4">{% csrf_token %}
+            {{ form.as_p }}
+            <div class="flex justify-end gap-2">
+                {% component "unfold/components/button.html" with submit=1 variant="primary" %}{% trans "Save" %}{% endcomponent %}
+                {% component "unfold/components/button.html" with href=cancel_url variant="default" %}{% trans "Cancel" %}{% endcomponent %}
+            </div>
+        </form>
+    {% endcomponent %}
+</div>
+{% endblock %}

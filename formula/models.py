@@ -5,6 +5,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from djmoney.models.fields import MoneyField
 from simple_history.models import HistoricalRecords
+from django_currentuser.db.models import CurrentUserField
 
 from formula.encoders import PrettyJSONEncoder
 
@@ -123,14 +124,7 @@ class Driver(AuditedModel):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-    )
-    editor = models.ForeignKey(
-        "User",
-        verbose_name=_("editor"),
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="driver_editor",
+        related_name="driver_author",
     )
     standing = models.ForeignKey(
         "Standing",
@@ -138,7 +132,7 @@ class Driver(AuditedModel):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="standing",
+        related_name="driver_standing",
     )
     constructors = models.ManyToManyField(
         "Constructor", verbose_name=_("constructors"), blank=True
@@ -180,6 +174,8 @@ class Driver(AuditedModel):
         null=True,
     )
     is_hidden = models.BooleanField(_("hidden"), default=False)
+    created_by = CurrentUserField(related_name="driver_created_by")
+    updated_by = CurrentUserField(on_update=True, related_name="driver_updated_by")
 
     class Meta:
         db_table = "drivers"
@@ -272,3 +268,223 @@ class Standing(AuditedModel):
 
     def __str__(self):
         return f"{self.driver.full_name}, {self.position}"
+
+
+class FileStorage(models.Model):
+    name = models.CharField(max_length=255)
+    file = models.FileField(upload_to="files/")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    # New: optional user-set category and description
+    CATEGORY_CHOICES = [
+        ("BOL", "BOL"),
+        ("POD", "POD"),
+        ("Invoice", "Invoice"),
+        ("Insurance", "Insurance"),
+        ("Registration", "Registration"),
+        ("IFTA", "IFTA"),
+        ("Logs", "Logs"),
+        ("Permits", "Permits"),
+        ("Maintenance", "Maintenance"),
+        ("Driver Docs", "Driver Docs"),
+        ("Load Docs", "Load Docs"),
+        ("Documents", "Documents"),
+        ("Other", "Other"),
+    ]
+    category = models.CharField(
+        max_length=32, choices=CATEGORY_CHOICES, blank=True, null=True
+    )
+    description = models.CharField(max_length=255, blank=True, null=True)
+
+    @property
+    def category_display(self):
+        # Prefer explicit category if provided
+        if getattr(self, "category", None):
+            return self.category
+        filename = (self.name or "") + " " + (self.file.name or "")
+        f = filename.lower()
+        mapping = [
+            ("BOL", ["bol", "bill of lading"]),
+            ("POD", ["pod", "proof of delivery"]),
+            ("Invoice", ["invoice"]),
+            ("Insurance", ["insurance", "policy", "cert"]),
+            ("Registration", ["registration", "cab card"]),
+            ("IFTA", ["ifta", "fuel", "miles"]),
+            ("Logs", ["eld", "log"]),
+            ("Permits", ["permit"]),
+            ("Maintenance", ["maintenance", "repair", "service"]),
+            ("Driver Docs", ["license", "cdl", "medical", "mvr"]),
+            ("Load Docs", ["rate con", "rate confirmation"]),
+        ]
+        for label, keywords in mapping:
+            if any(k in f for k in keywords):
+                return label
+        # fallback based on extension
+        if f.endswith((".pdf", ".png", ".jpg", ".jpeg")):
+            return "Documents"
+        return "Other"
+
+
+class IFTAReport(models.Model):
+    report_name = models.CharField(max_length=255)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    total_miles = models.FloatField()
+    total_fuel = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Route(models.Model):
+    name = models.CharField(max_length=255)
+    start_location = models.CharField(max_length=255)
+    end_location = models.CharField(max_length=255)
+    distance = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Load(models.Model):
+    load_name = models.CharField(max_length=255)
+    description = models.TextField()
+    pickup_date = models.DateField()
+    delivery_date = models.DateField()
+    route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name="loads")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class BusinessAsset(models.Model):
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    image = models.ImageField(upload_to="assets/", blank=True, null=True)
+    purchase_date = models.DateField()
+    value = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Finance(models.Model):
+    TYPE_CHOICES = (
+        ("INCOME", "Income"),
+        ("EXPENSE", "Expense"),
+    )
+    category = models.CharField(max_length=255)
+    # New: income vs expense
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES, blank=True, null=True)
+    amount = models.FloatField()
+    date = models.DateField()
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def is_expense(self) -> bool:
+        if self.type:
+            return self.type == "EXPENSE"
+        # Fallback: negative amounts treated as expenses
+        return (self.amount or 0) < 0
+
+
+# =====================
+# Personal section models
+# =====================
+class PersonalProperty(models.Model):
+    name = models.CharField(max_length=255)
+    address = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class PersonalAsset(models.Model):
+    name = models.CharField(max_length=255)
+    category = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class PersonalProject(models.Model):
+    STATUS_CHOICES = (
+        ("PLANNED", "Planned"),
+        ("IN_PROGRESS", "In Progress"),
+        ("COMPLETED", "Completed"),
+        ("ON_HOLD", "On Hold"),
+    )
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    start_date = models.DateField(blank=True, null=True)
+    end_date = models.DateField(blank=True, null=True)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, blank=True, null=True)
+    budget = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    assigned_to = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class PersonalRepair(models.Model):
+    PRIORITY_CHOICES = (("LOW", "Low"), ("MEDIUM", "Medium"), ("HIGH", "High"))
+    STATUS_CHOICES = (
+        ("OPEN", "Open"),
+        ("SCHEDULED", "Scheduled"),
+        ("IN_PROGRESS", "In Progress"),
+        ("DONE", "Done"),
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    priority = models.CharField(max_length=16, choices=PRIORITY_CHOICES, blank=True, null=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, blank=True, null=True)
+    reported_by = models.CharField(max_length=255, blank=True, null=True)
+    assigned_to = models.CharField(max_length=255, blank=True, null=True)
+    estimated_cost = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    reported_date = models.DateField(blank=True, null=True)
+    scheduled_date = models.DateField(blank=True, null=True)
+    category = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+
+class PersonalFinancialEntry(models.Model):
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.date} ${self.amount}"
+
+
+class PersonalDocument(models.Model):
+    title = models.CharField(max_length=255)
+    file = models.FileField(upload_to="personal_docs/")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+
+class PersonalReport(models.Model):
+    title = models.CharField(max_length=255)
+    content = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+
+class PersonalTask(models.Model):
+    PRIORITY_CHOICES = (("LOW", "Low"), ("MEDIUM", "Medium"), ("HIGH", "High"))
+    STATUS_CHOICES = (("TODO", "To Do"), ("IN_PROGRESS", "In Progress"), ("DONE", "Done"))
+    project = models.ForeignKey(PersonalProject, on_delete=models.CASCADE, related_name="tasks")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="TODO")
+    priority = models.CharField(max_length=16, choices=PRIORITY_CHOICES, blank=True, null=True)
+    assigned_to = models.CharField(max_length=255, blank=True, null=True)
+    due_date = models.DateField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.title} ({self.get_status_display()})"

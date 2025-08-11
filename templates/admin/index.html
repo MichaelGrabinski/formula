@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+</head>
+<body>
+    <h1>Admin Dashboard</h1>
+    <ul>
+        <li><a href="{% url 'filestorage_list' %}">File Storage</a></li>
+        <li><a href="{% url 'filestorage_add' %}">Add File Storage</a></li>
+        <li><a href="{% url 'iftareport_list' %}">IFTA Reports</a></li>
+        <li><a href="{% url 'iftareport_add' %}">Add IFTA Report</a></li>
+        <!-- Add other links here -->
+    </ul>
+</body>
+</html>

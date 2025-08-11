@@ -122,6 +122,44 @@
                     {% endfor %}
                 </div>
             </div>
+
+            <div class="flex flex-col gap-4">
+                <div class="flex flex-row items-center">
+                    <h2 class="text-xl font-semibold flex-1">
+                        {% trans "File Storage" %}
+                    </h2>
+
+                    {% url 'filestorage_add' as filestorage_add_url %}
+                    <div class="flex flex-row gap-2">
+                        {% component "unfold/components/button.html" with href=filestorage_add_url variant="primary" %}
+                            {% trans "Add File Storage" %}
+                        {% endcomponent %}
+                    </div>
+                </div>
+
+                {% component "unfold/components/card.html" %}
+                    {% component "unfold/components/table.html" with table=filestorage_table card_included=1 %}{% endcomponent %}
+                {% endcomponent %}
+            </div>
+
+            <div class="flex flex-col gap-4">
+                <div class="flex flex-row items-center">
+                    <h2 class="text-xl font-semibold flex-1">
+                        {% trans "IFTA Reports" %}
+                    </h2>
+
+                    {% url 'iftareport_add' as iftareport_add_url %}
+                    <div class="flex flex-row gap-2">
+                        {% component "unfold/components/button.html" with href=iftareport_add_url variant="primary" %}
+                            {% trans "Add IFTA Report" %}
+                        {% endcomponent %}
+                    </div>
+                </div>
+
+                {% component "unfold/components/card.html" %}
+                    {% component "unfold/components/table.html" with table=iftareport_table card_included=1 %}{% endcomponent %}
+                {% endcomponent %}
+            </div>
         </div>
     {% endcomponent %}
 {% endblock %}

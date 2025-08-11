@@ -1,0 +1,61 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+  <div class="flex flex-row items-center">
+    <h2 class="text-xl font-semibold flex-1">{% trans "AI Assistant" %}</h2>
+  </div>
+
+  {% component "unfold/components/card.html" %}
+    <div class="p-4 flex flex-col gap-4">
+      <form method="post" class="grid grid-cols-1 md:grid-cols-3 gap-4">{% csrf_token %}
+        <!-- settings -->
+        <div>
+          <label class="text-sm block mb-1" for="model">{% trans "Model" %}</label>
+          <select id="model" name="model" class="select select-bordered w-full">
+            {% for val,label in models %}
+              <option value="{{ val }}" {% if val == model_selected %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-sm block mb-1" for="agent">{% trans "Agent" %}</label>
+          <select id="agent" name="agent" class="select select-bordered w-full">
+            {% for val,label in agents %}
+              <option value="{{ val }}" {% if val == agent_selected %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="md:col-span-3">
+          <label class="text-sm block mb-1" for="system_prompt">{% trans "System Prompt" %}</label>
+          <textarea id="system_prompt" name="system_prompt" rows="3" class="textarea textarea-bordered w-full">{{ system_prompt }}</textarea>
+        </div>
+        <div class="md:col-span-3 flex gap-2 justify-end">
+          {% component "unfold/components/button.html" with name="action" value="save" submit=1 variant="default" %}{% trans "Save Settings" %}{% endcomponent %}
+          {% component "unfold/components/button.html" with name="action" value="clear" submit=1 variant="danger" %}{% trans "Clear Chat" %}{% endcomponent %}
+        </div>
+      </form>
+    </div>
+  {% endcomponent %}
+
+  {% component "unfold/components/card.html" %}
+    <div class="p-4 flex flex-col gap-4">
+      <div class="space-y-3 max-h-[50vh] overflow-auto pr-1">
+        {% for m in chat %}
+          <div class="rounded-lg p-3 border {% if m.role == 'user' %}bg-gray-50 dark:bg-gray-900{% else %}bg-primary-50 dark:bg-primary-900/20{% endif %} border-gray-200 dark:border-gray-800">
+            <div class="text-xs text-gray-500 mb-1">{{ m.role|title }}</div>
+            <div class="text-sm whitespace-pre-wrap">{{ m.content }}</div>
+          </div>
+        {% empty %}
+          <div class="text-sm text-gray-500">{% trans "No messages yet." %}</div>
+        {% endfor %}
+      </div>
+      <form method="post" class="flex gap-2 items-end">{% csrf_token %}
+        <textarea name="message" rows="2" class="textarea textarea-bordered w-full" placeholder="{% trans 'Ask anything…' %}"></textarea>
+        {% component "unfold/components/button.html" with submit=1 variant="primary" %}{% trans "Send" %}{% endcomponent %}
+      </form>
+    </div>
+  {% endcomponent %}
+</div>
+{% endblock %}

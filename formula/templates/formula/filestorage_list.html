@@ -1,0 +1,36 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center gap-2">
+        <h2 class="text-xl font-semibold flex-1">{% trans "File Storage" %}</h2>
+        {% url 'filestorage_add' as add_url %}
+        {% component "unfold/components/button.html" with href=add_url variant="primary" %}{% trans "Add New File" %}{% endcomponent %}
+    </div>
+
+    {% component "unfold/components/card.html" %}
+        <div class="p-4">
+            <form method="get" class="flex flex-col gap-3 md:flex-row md:items-end md:gap-4 mb-4">
+                <div class="flex items-center gap-2">
+                    <label for="category" class="text-sm">{% trans "Category" %}</label>
+                    <select id="category" name="category" class="select select-bordered select-sm">
+                        {% for c in categories %}
+                            <option value="{{ c }}" {% if c == selected_category %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="q" class="text-sm">{% trans "Search" %}</label>
+                    <input id="q" name="q" value="{{ query }}" class="input input-bordered input-sm" placeholder="{% trans 'file name or path' %}" />
+                </div>
+                <div class="md:ml-auto">
+                    {% component "unfold/components/button.html" with submit=1 size="sm" %}{% trans "Apply" %}{% endcomponent %}
+                </div>
+            </form>
+
+            {% component "unfold/components/table.html" with table=filestorage_table card_included=1 %}{% endcomponent %}
+        </div>
+    {% endcomponent %}
+</div>
+{% endblock %}

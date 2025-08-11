@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+</head>
+<body>
+    {% extends 'admin/base.html' %}
+    {% load i18n unfold %}
+
+    {% block content %}
+    <div class="flex flex-col gap-6">
+        <h1 class="text-2xl font-semibold">{% trans "Welcome to the Formula App" %}</h1>
+
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {% for item in links %}
+                {% component "unfold/components/card.html" %}
+                    <a class="block p-3 hover:text-primary-600" href="{{ item.url }}">{{ item.name }}</a>
+                {% endcomponent %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endblock %}
+</body>
+</html>

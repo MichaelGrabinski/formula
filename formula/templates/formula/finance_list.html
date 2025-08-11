@@ -1,0 +1,137 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold humanize %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center">
+        <h2 class="text-xl font-semibold flex-1">
+            {% trans "Finance" %}
+        </h2>
+
+        {% url 'finance_add' as finance_add_url %}
+        <div class="flex flex-row gap-2">
+            {% component "unfold/components/button.html" with href=finance_add_url variant="primary" %}
+                {% trans "Add Finance" %}
+            {% endcomponent %}
+        </div>
+    </div>
+
+    {% component "unfold/components/card.html" %}
+        <div class="p-4">
+            <form method="get" class="flex flex-col gap-3 md:flex-row md:items-end md:gap-4 mb-4">
+                <!-- filters -->
+                <div class="flex items-center gap-2">
+                    <label for="q" class="text-sm">{% trans "Search" %}</label>
+                    <input id="q" name="q" value="{{ q }}" class="input input-bordered input-sm" placeholder="{% trans 'category or description' %}" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="category" class="text-sm">{% trans "Category" %}</label>
+                    <select id="category" name="category" class="select select-bordered select-sm">
+                        <option value="">{% trans "All" %}</option>
+                        {% for c in categories %}
+                            <option value="{{ c }}" {% if c == category_selected %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="type" class="text-sm">{% trans "Type" %}</label>
+                    <select id="type" name="type" class="select select-bordered select-sm">
+                        <option value="">{% trans "All" %}</option>
+                        <option value="INCOME" {% if type_selected == 'INCOME' %}selected{% endif %}>{% trans "Income" %}</option>
+                        <option value="EXPENSE" {% if type_selected == 'EXPENSE' %}selected{% endif %}>{% trans "Expense" %}</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="start" class="text-sm">{% trans "Start" %}</label>
+                    <input id="start" name="start" type="date" value="{{ start }}" class="input input-bordered input-sm" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="end" class="text-sm">{% trans "End" %}</label>
+                    <input id="end" name="end" type="date" value="{{ end }}" class="input input-bordered input-sm" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="min" class="text-sm">{% trans "Min" %}</label>
+                    <input id="min" name="min" type="number" step="0.01" value="{{ min }}" class="input input-bordered input-sm w-28" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="max" class="text-sm">{% trans "Max" %}</label>
+                    <input id="max" name="max" type="number" step="0.01" value="{{ max }}" class="input input-bordered input-sm w-28" />
+                </div>
+                <div class="md:ml-auto">
+                    {% component "unfold/components/button.html" with submit=1 size="sm" %}{% trans "Apply" %}{% endcomponent %}
+                    {% if q or category_selected or type_selected or start or end or min or max %}
+                    <a href="{% url 'finance_list' %}" class="text-sm ml-2 underline">{% trans "Reset" %}</a>
+                    {% endif %}
+                </div>
+            </form>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                {% component "unfold/components/kpi.html" with title=_("Income") metric="$"|add:income_total|stringformat:'.2f' %}{% endcomponent %}
+                {% component "unfold/components/kpi.html" with title=_("Expenses") metric="$"|add:expense_total|stringformat:'.2f' %}{% endcomponent %}
+                {% component "unfold/components/kpi.html" with title=_("Net") metric="$"|add:net_total|stringformat:'.2f' %}{% endcomponent %}
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+                    <h3 class="text-sm font-medium mb-2">{% trans "Monthly Income vs Expense" %}</h3>
+                    <canvas id="financeLine" height="140"></canvas>
+                </div>
+                <div class="rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+                    <h3 class="text-sm font-medium mb-2">{% trans "Expenses by Category" %}</h3>
+                    <canvas id="financePie" height="140"></canvas>
+                </div>
+            </div>
+
+            <div class="flex justify-end mb-2">
+                <a href="?q={{ q }}&category={{ category_selected }}&type={{ type_selected }}&start={{ start }}&end={{ end }}&min={{ min }}&max={{ max }}&export=csv" class="text-sm underline">{% trans "Export CSV" %}</a>
+            </div>
+
+            {% component "unfold/components/table.html" with table=finance_table card_included=1 %}{% endcomponent %}
+        </div>
+    {% endcomponent %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+<script>
+(function() {
+    const months = JSON.parse('{{ months_json|escapejs }}');
+    const income = JSON.parse('{{ income_points_json|escapejs }}');
+    const expense = JSON.parse('{{ expense_points_json|escapejs }}');
+    function makeLine() {
+        const el = document.getElementById('financeLine');
+        if (!el || !window.Chart) return;
+        const ctx = el.getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [
+                    { label: 'Income', data: income, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.15)', tension: 0.3 },
+                    { label: 'Expense', data: expense, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.15)', tension: 0.3 }
+                ]
+            },
+            options: { plugins: { legend: { display: true } }, responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    }
+
+    const catLabels = JSON.parse('{{ expense_cat_labels_json|escapejs }}');
+    const catValues = JSON.parse('{{ expense_cat_values_json|escapejs }}');
+    function makePie() {
+        const el = document.getElementById('financePie');
+        if (!el || !window.Chart) return;
+        const pctx = el.getContext('2d');
+        new Chart(pctx, {
+            type: 'doughnut',
+            data: { labels: catLabels, datasets: [{ data: catValues, backgroundColor: ['#f87171','#fb923c','#fbbf24','#34d399','#60a5fa','#a78bfa','#f472b6','#94a3b8'] }] },
+            options: { plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(function(){ makeLine(); makePie(); }, 0);
+    } else {
+        document.addEventListener('DOMContentLoaded', function(){ makeLine(); makePie(); });
+    }
+})();
+</script>
+{% endblock %}

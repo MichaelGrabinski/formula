@@ -1,0 +1,23 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center">
+        <h2 class="text-xl font-semibold flex-1">
+            {% trans "Business Assets" %}
+        </h2>
+
+        {% url 'businessasset_add' as businessasset_add_url %}
+        <div class="flex flex-row gap-2">
+            {% component "unfold/components/button.html" with href=businessasset_add_url variant="primary" %}
+                {% trans "Add Business Asset" %}
+            {% endcomponent %}
+        </div>
+    </div>
+
+    {% component "unfold/components/card.html" %}
+        {% component "unfold/components/table.html" with table=businessasset_table card_included=1 %}{% endcomponent %}
+    {% endcomponent %}
+</div>
+{% endblock %}

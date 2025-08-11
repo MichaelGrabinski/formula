@@ -28,6 +28,20 @@ from unfold.widgets import (
 
 from formula.models import Driver
 
+# =====================
+# Personal section forms
+# =====================
+from formula.models import (
+    PersonalProperty,
+    PersonalAsset,
+    PersonalProject,
+    PersonalRepair,
+    PersonalFinancialEntry,
+    PersonalDocument,
+    PersonalReport,
+    PersonalTask,
+)
+
 
 class HomeView(RedirectView):
     pattern_name = "admin:index"
@@ -272,16 +286,14 @@ class DriverForm(forms.ModelForm):
         fields = [
             "first_name",
             "last_name",
-            "code",
-        ]
+        ]  # Removed the `code` field
         widgets = {
             "first_name": UnfoldAdminTextInputWidget(),
             "last_name": UnfoldAdminTextInputWidget(),
-            "code": UnfoldAdminTextInputWidget(),
         }
 
     def clean(self):
-        raise ValidationError("Testing form wide error messages.")
+        pass  # Removed the testing ValidationError
 
 
 class DriverFormSet(forms.BaseModelFormSet):
@@ -298,3 +310,91 @@ class LoginForm(AuthenticationForm):
         if settings.LOGIN_USERNAME and settings.LOGIN_PASSWORD:
             self.fields["username"].initial = settings.LOGIN_USERNAME
             self.fields["password"].initial = settings.LOGIN_PASSWORD
+
+
+class PropertyForm(forms.ModelForm):
+    class Meta:
+        model = PersonalProperty
+        fields = ["name", "address"]
+
+
+class AssetForm(forms.ModelForm):
+    class Meta:
+        model = PersonalAsset
+        fields = ["name", "category"]
+
+
+class ProjectForm(forms.ModelForm):
+    class Meta:
+        model = PersonalProject
+        fields = [
+            "name",
+            "description",
+            "start_date",
+            "end_date",
+            "status",
+            "budget",
+            "assigned_to",
+        ]
+
+
+class RepairForm(forms.ModelForm):
+    class Meta:
+        model = PersonalRepair
+        fields = [
+            "title",
+            "description",
+            "priority",
+            "status",
+            "reported_by",
+            "assigned_to",
+            "estimated_cost",
+            "reported_date",
+            "scheduled_date",
+            "category",
+        ]
+
+
+class FinancialEntryForm(forms.ModelForm):
+    class Meta:
+        model = PersonalFinancialEntry
+        fields = ["date", "amount", "description"]
+
+
+class DocumentForm(forms.ModelForm):
+    class Meta:
+        model = PersonalDocument
+        fields = ["title", "file"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make file optional on edit but required on create
+        if getattr(self.instance, "pk", None):
+            self.fields["file"].required = False
+        else:
+            self.fields["file"].required = True
+
+
+class ReportForm(forms.ModelForm):
+    class Meta:
+        model = PersonalReport
+        fields = ["title", "content"]
+
+
+# New: PersonalTask form used in projects task management
+class TaskForm(forms.ModelForm):
+    class Meta:
+        model = PersonalTask
+        fields = [
+            "project",
+            "title",
+            "description",
+            "status",
+            "priority",
+            "assigned_to",
+            "due_date",
+        ]
+
+
+class AIChatForm(forms.Form):
+    prompt = forms.CharField(label="", widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Type your question..."}))

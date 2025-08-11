@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">Documents</h1>
+
+<form method="get" class="mb-6">
+    <div class="flex items-center space-x-2">
+        <input type="text" name="search" value="{{ search_query }}" class="flex-1 p-2 border border-input rounded-l-md focus:outline-none focus:ring-2 focus:ring-primary-foreground" placeholder="Search documents" />
+        <button type="submit" class="px-4 py-2 bg-secondary text-secondary-foreground rounded-r-md hover:bg-secondary-foreground hover:text-secondary">Search</button>
+    </div>
+</form>
+
+<form method="post" enctype="multipart/form-data" class="mb-6">
+    {% csrf_token %}
+    <div class="mb-4 space-y-2">
+        {{ form.as_p }}
+    </div>
+    <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">{% if edit_document %}Save Changes{% else %}Upload Document{% endif %}</button>
+</form>
+
+<table class="min-w-full divide-y divide-border mb-6">
+    <thead>
+        <tr class="bg-secondary">
+            <th class="px-4 py-2 text-left text-secondary-foreground">Title</th>
+            <th class="px-4 py-2 text-left text-secondary-foreground">File</th>
+            <th class="px-4 py-2 text-left text-secondary-foreground">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for document in page_obj %}
+        <tr class="even:bg-muted">
+            <td class="px-4 py-2">{{ document.title }}</td>
+            <td class="px-4 py-2"><a href="{{ document.file.url }}" class="px-2 py-1 bg-accent text-accent-foreground rounded hover:bg-accent-foreground hover:text-accent">Download</a></td>
+            <td class="px-4 py-2 space-x-2">
+                <a href="{% url 'edit_document' document.id %}" class="px-2 py-1 bg-accent text-accent-foreground rounded hover:bg-accent-foreground hover:text-accent">Edit</a>
+                <a href="{% url 'delete_document' document.id %}" class="px-2 py-1 bg-destructive text-destructive-foreground rounded hover:bg-destructive-foreground hover:text-destructive" onclick="return confirm('Are you sure?');">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<nav class="flex justify-center">
+    <ul class="inline-flex items-center space-x-1">
+        {% if page_obj.has_previous %}
+        <li>
+            <a class="px-3 py-1 border border-border rounded hover:bg-primary hover:text-primary-foreground" href="?page={{ page_obj.previous_page_number }}&search={{ search_query }}">Previous</a>
+        </li>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+        <li>
+            <a class="px-3 py-1 border border-border rounded {% if num == page_obj.number %}bg-primary text-primary-foreground{% else %}hover:bg-secondary hover:text-secondary-foreground{% endif %}" href="?page={{ num }}&search={{ search_query }}">{{ num }}</a>
+        </li>
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <li>
+            <a class="px-3 py-1 border border-border rounded hover:bg-primary hover:text-primary-foreground" href="?page={{ page_obj.next_page_number }}&search={{ search_query }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endblock %}

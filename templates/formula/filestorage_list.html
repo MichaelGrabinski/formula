@@ -1,0 +1,34 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center">
+        <h2 class="text-xl font-semibold flex-1">{% trans "File Storage" %}</h2>
+
+        {% url 'filestorage_add' as add_url %}
+        <div class="flex flex-row gap-2">
+            {% component "unfold/components/button.html" with href=add_url variant="primary" %}
+                {% trans "Add New File" %}
+            {% endcomponent %}
+        </div>
+    </div>
+
+    {% component "unfold/components/card.html" %}
+        <ul class="list-disc pl-5">
+            {% for file in object_list %}
+                <li class="py-1">
+                    <span class="mr-2">{{ file.name }}</span>
+                    <a class="text-blue-600 hover:underline mr-2" href="{{ file.file.url }}">{% trans "Download" %}</a>
+                    {% url 'filestorage_edit' file.pk as edit_url %}
+                    {% component "unfold/components/button.html" with href=edit_url size="sm" variant="default" %}{% trans "Edit" %}{% endcomponent %}
+                    {% url 'filestorage_delete' file.pk as del_url %}
+                    {% component "unfold/components/button.html" with href=del_url size="sm" variant="danger" %}{% trans "Delete" %}{% endcomponent %}
+                </li>
+            {% empty %}
+                <li class="text-sm text-font-muted">{% trans "No files found." %}</li>
+            {% endfor %}
+        </ul>
+    {% endcomponent %}
+</div>
+{% endblock %}

@@ -23,6 +23,7 @@ gunicorn = "^23.0"
 pillow = "^11.2"
 sentry-sdk = { extras = ["django"], version = "^2.27" }
 pygments = "^2.19"
+openai = "^1.40"
 
 [tool.ruff]
 fix = true

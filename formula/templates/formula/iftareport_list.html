@@ -1,0 +1,56 @@
+{% extends 'admin/base.html' %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+    <div class="flex flex-row items-center">
+        <h2 class="text-xl font-semibold flex-1">
+            {% trans "IFTA Reports" %}
+        </h2>
+
+        {% url 'iftareport_add' as add_url %}
+        <div class="flex flex-row gap-2">
+            {% component "unfold/components/button.html" with href=add_url variant="primary" %}
+                {% trans "Add IFTA Report" %}
+            {% endcomponent %}
+        </div>
+    </div>
+
+    {% component "unfold/components/card.html" %}
+        <div class="p-4">
+            <form method="get" class="flex flex-col gap-3 md:flex-row md:items-end md:gap-4 mb-4">
+                <div class="flex items-center gap-2">
+                    <label for="q" class="text-sm">{% trans "Search" %}</label>
+                    <input id="q" name="q" value="{{ q }}" class="input input-bordered input-sm" placeholder="{% trans 'report name' %}" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="start" class="text-sm">{% trans "Start" %}</label>
+                    <input id="start" name="start" type="date" value="{{ start }}" class="input input-bordered input-sm" />
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="end" class="text-sm">{% trans "End" %}</label>
+                    <input id="end" name="end" type="date" value="{{ end }}" class="input input-bordered input-sm" />
+                </div>
+                <div class="md:ml-auto">
+                    {% component "unfold/components/button.html" with submit=1 size="sm" %}{% trans "Apply" %}{% endcomponent %}
+                    {% if q or start or end %}
+                    <a href="{% url 'iftareport_list' %}" class="text-sm ml-2 underline">{% trans "Reset" %}</a>
+                    {% endif %}
+                </div>
+            </form>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                {% component "unfold/components/kpi.html" with title=_("Total Miles") metric=total_miles %}{% endcomponent %}
+                {% component "unfold/components/kpi.html" with title=_("Total Fuel (gal)") metric=total_fuel %}{% endcomponent %}
+                {% component "unfold/components/kpi.html" with title=_("Average MPG") metric=avg_mpg|floatformat:2 %}{% endcomponent %}
+            </div>
+
+            <div class="flex justify-end mb-2">
+                <a href="?q={{ q }}&start={{ start }}&end={{ end }}&export=csv" class="text-sm underline">{% trans "Export CSV" %}</a>
+            </div>
+
+            {% component "unfold/components/table.html" with table=iftareport_table card_included=1 %}{% endcomponent %}
+        </div>
+    {% endcomponent %}
+</div>
+{% endblock %}

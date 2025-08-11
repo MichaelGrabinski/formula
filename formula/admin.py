@@ -32,7 +32,6 @@ from django_celery_beat.models import (
 )
 from guardian.admin import GuardedModelAdmin
 from import_export.admin import ExportActionModelAdmin, ImportExportModelAdmin
-from modeltranslation.admin import TabbedTranslationAdmin
 from simple_history.admin import SimpleHistoryAdmin
 from unfold.admin import GenericTabularInline, ModelAdmin, StackedInline, TabularInline
 from unfold.components import BaseComponent, register_component
@@ -78,6 +77,12 @@ from formula.models import (
     Standing,
     Tag,
     User,
+    FileStorage,
+    IFTAReport,
+    Route,
+    Load,
+    BusinessAsset,
+    Finance,
 )
 from formula.resources import AnotherConstructorResource, ConstructorResource
 from formula.sites import formula_admin_site
@@ -279,7 +284,7 @@ class CircuitRaceInline(StackedInline):
 
 
 @admin.register(Circuit, site=formula_admin_site)
-class CircuitAdmin(ModelAdmin, TabbedTranslationAdmin):
+class CircuitAdmin(ModelAdmin):
     show_facets = admin.ShowFacets.ALLOW
     search_fields = ["name", "city", "country"]
     list_display = ["name", "city", "country"]
@@ -532,7 +537,6 @@ class ChartSection(TemplateSection):
 
 class DriverAdminMixin(ModelAdmin):
     list_sections = [ContructorTableSection, ChartSection]
-    list_sections_classes = "lg:grid-cols-2"
     form = DriverAdminForm
     history_list_per_page = 10
     search_fields = ["last_name", "first_name", "code"]
@@ -543,28 +547,18 @@ class DriverAdminMixin(ModelAdmin):
         "display_constructor",
         "display_total_points",
         "display_total_wins",
-        "category",
-        "display_status",
-        "display_code",
+        "status",  # Removed `category`
     ]
     inlines = [
-        DriverStandingInline,
-        RaceWinnerInline,
+        RaceWinnerInline,  # Removed `DriverStandingInline`
     ]
-    conditional_fields = {
-        "conditional_field_active": "status == 'ACTIVE'",
-        "conditional_field_inactive": "status == 'INACTIVE'",
-    }
     autocomplete_fields = [
         "constructors",
-        "editor",
-        "standing",
-    ]
+    ]  # Removed `standing`
     radio_fields = {
         "status": admin.VERTICAL,
     }
     readonly_fields = [
-        # "author",
         "data",
     ]
     list_before_template = "formula/driver_list_before.html"
@@ -701,7 +695,6 @@ class DriverAdmin(GuardedModelAdmin, SimpleHistoryAdmin, DriverAdminMixin):
                     "first_race_at",
                     "resume",
                     "author",
-                    "editor",
                     "standing",
                     "constructors",
                     "code",
@@ -734,6 +727,9 @@ class DriverAdmin(GuardedModelAdmin, SimpleHistoryAdmin, DriverAdminMixin):
             },
         ),
     ]
+    autocomplete_fields = ["constructors"]
+    radio_fields = {"status": admin.VERTICAL}
+    readonly_fields = ["data"]
     actions_list = [
         "changelist_action_should_not_be_visible",
         "changelist_action1",
@@ -1210,3 +1206,11 @@ class DriverSectionChangeComponent(BaseComponent):
 @admin.register(Config, site=formula_admin_site)
 class ConstanceConfigAdmin(ConstanceAdmin):
     pass
+
+admin.site.register(FileStorage)
+admin.site.register(IFTAReport)
+admin.site.register(Route)
+admin.site.register(Load)
+admin.site.register(Driver)
+admin.site.register(BusinessAsset)
+admin.site.register(Finance)

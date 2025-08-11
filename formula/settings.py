@@ -16,7 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = environ.get("SECRET_KEY", get_random_secret_key())
 
-DEBUG = environ.get("DEBUG") == "1"
+DEBUG = True
 
 ROOT_URLCONF = "formula.urls"
 
@@ -32,14 +32,13 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 10_000
 ALLOWED_HOSTS = environ.get("ALLOWED_HOSTS", "localhost").split(",")
 
 CSRF_TRUSTED_ORIGINS = environ.get(
-    "CSRF_TRUSTED_ORIGINS", "http://localhost:8000"
+    "CSRF_TRUSTED_ORIGINS", "http://localhost:7000"
 ).split(",")
 
 ######################################################################
 # Apps
 ######################################################################
 INSTALLED_APPS = [
-    "modeltranslation",
     "unfold",
     "unfold.contrib.filters",
     "unfold.contrib.constance",
@@ -87,6 +86,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
     "formula.middleware.ReadonlyExceptionHandlerMiddleware",
+    "django_currentuser.middleware.ThreadLocalUserMiddleware",
 ]
 
 ######################################################################
@@ -102,6 +102,7 @@ TEMPLATES = [
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
             path.normpath(path.join(BASE_DIR, "formula/templates")),
+            path.normpath(path.join(BASE_DIR, "personal-management-platform", "templates")),
         ],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -276,9 +277,7 @@ UNFOLD = {
                 },
                 {
                     "title": _("Active drivers"),
-                    "link": lambda request: f"{
-                        reverse_lazy('admin:formula_driver_changelist')
-                    }?status__exact=ACTIVE",
+                    "link": lambda request: f"{reverse_lazy('admin:formula_driver_changelist')}?status__exact=ACTIVE",
                 },
                 {
                     "title": _("Crispy Form"),
@@ -359,6 +358,41 @@ UNFOLD = {
                         "title": _("Constance"),
                         "icon": "settings",
                         "link": reverse_lazy("admin:constance_config_changelist"),
+                    },
+                    {
+                        "title": _("File Storage"),
+                        "icon": "folder",
+                        "link": reverse_lazy("filestorage_list"),
+                    },
+                    {
+                        "title": _("IFTA Reports"),
+                        "icon": "assignment",
+                        "link": reverse_lazy("iftareport_list"),
+                    },
+                    {
+                        "title": _("Routes"),
+                        "icon": "map",
+                        "link": reverse_lazy("route_list"),
+                    },
+                    {
+                        "title": _("Loads"),
+                        "icon": "local_shipping",
+                        "link": reverse_lazy("load_list"),
+                    },
+                    {
+                        "title": _("Business Assets"),
+                        "icon": "inventory_2",
+                        "link": reverse_lazy("businessasset_list"),
+                    },
+                    {
+                        "title": _("Finance"),
+                        "icon": "payments",
+                        "link": reverse_lazy("finance_list"),
+                    },
+                    {
+                        "title": _("AI Assistant"),
+                        "icon": "smart_toy",
+                        "link": reverse_lazy("ai_assistant"),
                     },
                 ],
             },
@@ -459,6 +493,10 @@ PLAUSIBLE_DOMAIN = environ.get("PLAUSIBLE_DOMAIN")
 # Sentry
 ######################################################################
 SENTRY_DSN = environ.get("SENTRY_DSN")
+
+# AI providers (OpenAI only)
+OPENAI_API_KEY = environ.get("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")
+OPENAI_BASE_URL = environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 if SENTRY_DSN:
     sentry_sdk.init(
@@ -562,4 +600,23 @@ CONSTANCE_ADDITIONAL_FIELDS = {
             ),
         },
     ],
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'debug.log',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
 }

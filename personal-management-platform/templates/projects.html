@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">Projects</h1>
+
+<div class="flex items-center justify-between mb-6">
+    <form method="get" class="flex items-center space-x-2">
+        <input type="text" name="search" value="{{ search_query }}" class="flex-1 p-2 border border-input rounded-l-md focus:outline-none focus:ring-2 focus:ring-primary-foreground" placeholder="Search projects" />
+        <select name="status" class="p-2 border border-input">
+            <option value="">All Statuses</option>
+            <option value="PLANNED" {% if status_selected == 'PLANNED' %}selected{% endif %}>Planned</option>
+            <option value="IN_PROGRESS" {% if status_selected == 'IN_PROGRESS' %}selected{% endif %}>In Progress</option>
+            <option value="COMPLETED" {% if status_selected == 'COMPLETED' %}selected{% endif %}>Completed</option>
+            <option value="ON_HOLD" {% if status_selected == 'ON_HOLD' %}selected{% endif %}>On Hold</option>
+        </select>
+        <button type="submit" class="px-4 py-2 bg-secondary text-secondary-foreground rounded-r-md hover:bg-secondary-foreground hover:text-secondary">Search</button>
+    </form>
+    <button onclick="document.getElementById('add-project-form').classList.toggle('hidden')" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">Add Project</button>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="lg:col-span-2">
+    <div id="add-project-form" class="{% if edit_project %}mb-6{% else %}hidden mb-6{% endif %}">
+      <form method="post" class="mb-6">
+          {% csrf_token %}
+          <div class="mb-4 space-y-2">
+              {{ form.as_p }}
+          </div>
+          <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">{% if edit_project %}Save Changes{% else %}Add Project{% endif %}</button>
+      </form>
+    </div>
+
+    <table class="min-w-full divide-y divide-border mb-6">
+        <thead>
+           <tr class="bg-secondary">
+               <th class="px-4 py-2 text-left text-secondary-foreground">Name</th>
+               <th class="px-4 py-2 text-left text-secondary-foreground">Status</th>
+               <th class="px-4 py-2 text-left text-secondary-foreground">Budget</th>
+               <th class="px-4 py-2 text-left text-secondary-foreground">Assigned To</th>
+               <th class="px-4 py-2 text-left text-secondary-foreground">Tasks</th>
+               <th class="px-4 py-2 text-left text-secondary-foreground">Open</th>
+           </tr>
+        </thead>
+        <tbody>
+           {% for project in page_obj %}
+           <tr class="even:bg-muted">
+               <td class="px-4 py-2"><a class="text-blue-600 hover:underline" href="?project={{ project.id }}">{{ project.name }}</a></td>
+               <td class="px-4 py-2">{{ project.status }}</td>
+               <td class="px-4 py-2">{% if project.budget %}${{ project.budget }}{% endif %}</td>
+               <td class="px-4 py-2">{{ project.assigned_to }}</td>
+               <td class="px-4 py-2">{{ project.tasks.count }}</td>
+               <td class="px-4 py-2">{{ project.tasks.all|dictsort:'status'|slice:':1'|length }}</td>
+           </tr>
+           {% empty %}
+           <tr><td colspan="6" class="px-4 py-2">No projects found.</td></tr>
+           {% endfor %}
+        </tbody>
+    </table>
+
+    <nav class="flex justify-center">
+        <ul class="inline-flex items-center space-x-1">
+            {% if page_obj.has_previous %}
+            <li>
+                <a class="px-3 py-1 border border-border rounded hover:bg-primary hover:text-primary-foreground" href="?page={{ page_obj.previous_page_number }}&search={{ search_query }}&status={{ status_selected }}">Previous</a>
+            </li>
+            {% endif %}
+            {% for num in page_obj.paginator.page_range %}
+            <li>
+                <a class="px-3 py-1 border border-border rounded {% if num == page_obj.number %}bg-primary text-primary-foreground{% else %}hover:bg-secondary hover:text-secondary-foreground{% endif %}" href="?page={{ num }}&search={{ search_query }}&status={{ status_selected }}">{{ num }}</a>
+            </li>
+            {% endfor %}
+            {% if page_obj.has_next %}
+            <li>
+                <a class="px-3 py-1 border border-border rounded hover:bg-primary hover:text-primary-foreground" href="?page={{ page_obj.next_page_number }}&search={{ search_query }}&status={{ status_selected }}">Next</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+  </div>
+
+  <div>
+    <div class="bg-card text-card-foreground rounded p-4 border border-border">
+      <h2 class="text-xl font-medium mb-2">Tasks</h2>
+      {% if selected_project %}
+        <p class="text-sm text-muted-foreground mb-2">Project: <strong>{{ selected_project.name }}</strong></p>
+        <form method="post" class="mb-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add_task" />
+          {{ task_form.as_p }}
+          <button type="submit" class="px-3 py-2 bg-primary text-primary-foreground rounded">Add Task</button>
+        </form>
+        <ul class="space-y-2">
+          {% for t in tasks %}
+            <li class="border border-border rounded p-2 flex items-center justify-between">
+              <div>
+                <div class="font-medium">{{ t.title }} <span class="text-xs text-muted-foreground">({{ t.status }})</span></div>
+                {% if t.due_date %}<div class="text-xs text-muted-foreground">Due: {{ t.due_date }}</div>{% endif %}
+              </div>
+              <div class="space-x-2">
+                <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
+                <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
+              </div>
+            </li>
+          {% empty %}
+            <li class="text-sm text-muted-foreground">No tasks yet.</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-muted-foreground">Select a project to manage its tasks.</p>
+      {% endif %}
+    </div>
+
+    <div class="bg-card text-card-foreground rounded p-4 border border-border mt-4">
+      <h3 class="text-lg font-medium mb-2">Project KPIs</h3>
+      <ul class="text-sm space-y-1">
+        <li>Planned: {{ project_status_counts.PLANNED }}</li>
+        <li>In Progress: {{ project_status_counts.IN_PROGRESS }}</li>
+        <li>Completed: {{ project_status_counts.COMPLETED }}</li>
+        <li>On Hold: {{ project_status_counts.ON_HOLD }}</li>
+        <li>Total Budget: ${{ total_budget }}</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

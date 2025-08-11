@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">Dashboard</h1>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-card text-card-foreground rounded p-4 border border-border">
+    <h5 class="text-sm text-muted-foreground">Total Projects</h5>
+    <p class="text-2xl font-semibold">{{ total_projects }}</p>
+  </div>
+  <div class="bg-card text-card-foreground rounded p-4 border border-border">
+    <h5 class="text-sm text-muted-foreground">Total Financial Entries</h5>
+    <p class="text-2xl font-semibold">{{ total_financial_entries }}</p>
+  </div>
+  <div class="bg-card text-card-foreground rounded p-4 border border-border">
+    <h5 class="text-sm text-muted-foreground">Total Reports</h5>
+    <p class="text-2xl font-semibold">{{ total_reports }}</p>
+  </div>
+  <div class="bg-card text-card-foreground rounded p-4 border border-border">
+    <h5 class="text-sm text-muted-foreground">Total Documents</h5>
+    <p class="text-2xl font-semibold">{{ total_documents }}</p>
+  </div>
+</div>
+
+<div class="space-y-2">
+  <a href="{% url 'projects' %}" class="block bg-secondary text-secondary-foreground hover:bg-secondary-foreground hover:text-secondary rounded p-3">Manage Projects</a>
+  <a href="{% url 'financial' %}" class="block bg-secondary text-secondary-foreground hover:bg-secondary-foreground hover:text-secondary rounded p-3">Track Finances</a>
+  <a href="{% url 'reports' %}" class="block bg-secondary text-secondary-foreground hover:bg-secondary-foreground hover:text-secondary rounded p-3">View Reports</a>
+  <a href="{% url 'documents' %}" class="block bg-secondary text-secondary-foreground hover:bg-secondary-foreground hover:text-secondary rounded p-3">Manage Documents</a>
+</div>
+{% endblock %}
