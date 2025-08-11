@@ -495,7 +495,7 @@ PLAUSIBLE_DOMAIN = environ.get("PLAUSIBLE_DOMAIN")
 SENTRY_DSN = environ.get("SENTRY_DSN")
 
 # AI providers (OpenAI only)
-OPENAI_API_KEY = environ.get("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")
+OPENAI_API_KEY = environ.get("no")
 OPENAI_BASE_URL = environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 if SENTRY_DSN:
