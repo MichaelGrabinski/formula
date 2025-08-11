@@ -48,7 +48,7 @@
 <body class="bg-background text-foreground">
     <nav class="bg-primary text-primary-foreground p-4">
          <div class="container-fluid">
-            <ul class="flex space-x-4">
+            <ul class="flex flex-wrap gap-4">
                     <li><a class="hover:underline" href="{% url 'dashboard' %}">Dashboard</a></li>
                     <li><a class="hover:underline" href="{% url 'properties' %}">Properties</a></li>
                     <li><a class="hover:underline" href="{% url 'repairs' %}">Repairs</a></li>
@@ -57,10 +57,11 @@
                     <li><a class="hover:underline" href="{% url 'financial' %}">Financial</a></li>
                     <li><a class="hover:underline" href="{% url 'reports' %}">Reports</a></li>
                     <li><a class="hover:underline" href="{% url 'documents' %}">Documents</a></li>
+                    <li><a class="hover:underline" href="{% url 'global_calendar' %}">Global Calendar</a></li>
             </ul>
          </div>
      </nav>
-    <div class="max-w-7xl mx-auto mt-4 px-4">
+    <div class="w-full max-w-7xl mx-auto mt-4 px-4 md:px-6">
         {% block content %}
         {% endblock %}
     </div>

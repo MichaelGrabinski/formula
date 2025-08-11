@@ -383,17 +383,27 @@ class ReportForm(forms.ModelForm):
 
 # New: PersonalTask form used in projects task management
 class TaskForm(forms.ModelForm):
+    progress = forms.IntegerField(required=False, min_value=0, max_value=100)
+
     class Meta:
         model = PersonalTask
         fields = [
             "project",
             "title",
             "description",
+            "section",
             "status",
             "priority",
             "assigned_to",
+            "start_date",
             "due_date",
+            "progress",
+            "ai_suggested",
         ]
+
+    def clean_progress(self):
+        v = self.cleaned_data.get("progress")
+        return 0 if v in (None, "") else v
 
 
 class AIChatForm(forms.Form):

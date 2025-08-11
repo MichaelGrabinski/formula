@@ -17,6 +17,7 @@ urlpatterns = [
 
     path("tasks/<int:pk>/edit/", views.ProjectTaskEditView.as_view(), name="edit_task"),
     path("tasks/<int:pk>/delete/", views.ProjectTaskDeleteView.as_view(), name="delete_task"),
+    path("tasks/<int:pk>/enrich/", views.enrich_task_with_ai, name="enrich_task"),
 
     path("assets/", views.PersonalAssetsView.as_view(), name="assets"),
     path("assets/<int:pk>/edit/", views.PersonalAssetEditView.as_view(), name="edit_asset"),
@@ -33,6 +34,8 @@ urlpatterns = [
     path("reports/", views.PersonalReportsView.as_view(), name="reports"),
     path("reports/<int:pk>/edit/", views.PersonalReportEditView.as_view(), name="edit_report"),
     path("reports/<int:pk>/delete/", views.PersonalReportDeleteView.as_view(), name="delete_report"),
+
+    path("calendar/", views.GlobalCalendarView.as_view(), name="global_calendar"),
 
     path("ai/", views.PersonalAIChatView.as_view(), name="personal_ai"),
 ]

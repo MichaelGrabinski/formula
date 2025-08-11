@@ -4,6 +4,8 @@ from functools import lru_cache
 from django.http import HttpResponse
 import csv
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.humanize.templatetags.humanize import intcomma
@@ -977,216 +979,63 @@ class AIAssistantView(AdminContextMixin, FormView):
 class PersonalBaseView(TemplateView):
     extra_context = {}
 
-
-class PersonalDashboardView(PersonalBaseView):
-    template_name = 'dashboard.html'
-
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx.update({
-            'total_projects': PersonalProject.objects.count(),
-            'total_financial_entries': PersonalFinancialEntry.objects.count(),
-            'total_reports': PersonalReport.objects.count(),
-            'total_documents': PersonalDocument.objects.count(),
-        })
+        today = timezone.localdate()
+        ctx.setdefault('today', today)
+        ctx.setdefault('today_plus_3', today + timedelta(days=3))
         return ctx
 
 
-class PersonalPropertiesView(PersonalBaseView):
-    template_name = 'properties.html'
-
-    def get(self, request, *args, **kwargs):
-        q = request.GET.get('search', '').strip()
-        qs = PersonalProperty.objects.all().order_by('-created_at')
-        if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(address__icontains=q))
-        page = Paginator(qs, 10).get_page(request.GET.get('page'))
-        ctx = self.get_context_data(form=PropertyForm(), page_obj=page, search_query=q)
-        return self.render_to_response(ctx)
-
-    def post(self, request, *args, **kwargs):
-        form = PropertyForm(request.POST)
-        if form.is_valid():
-            form.save()
-        return redirect('properties')
-
-
-class PersonalAssetsView(PersonalBaseView):
-    template_name = 'assets.html'
-
-    def get(self, request, *args, **kwargs):
-        q = request.GET.get('search', '').strip()
-        cat = request.GET.get('category', '').strip()
-        qs = PersonalAsset.objects.all().order_by('-created_at')
-        if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(category__icontains=q))
-        if cat:
-            qs = qs.filter(category__iexact=cat)
-        page = Paginator(qs, 10).get_page(request.GET.get('page'))
-        categories = (
-            PersonalAsset.objects.exclude(category__isnull=True)
-            .exclude(category__exact='')
-            .values_list('category', flat=True).distinct().order_by('category')
-        )
-        ctx = self.get_context_data(form=AssetForm(), page_obj=page, search_query=q, categories=categories, category_selected=cat)
-        return self.render_to_response(ctx)
-
-    def post(self, request, *args, **kwargs):
-        form = AssetForm(request.POST)
-        if form.is_valid():
-            form.save()
-        return redirect('assets')
-
-
-class PersonalProjectsView(PersonalBaseView):
-    template_name = 'projects.html'
-
-    def get(self, request, *args, **kwargs):
-        q = request.GET.get('search', '').strip()
-        status = request.GET.get('status', '').strip()
-        project_id = request.GET.get('project')
-        qs = PersonalProject.objects.all().order_by('-created_at')
-        if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q) | Q(assigned_to__icontains=q))
-        if status:
-            qs = qs.filter(status=status)
-        page = Paginator(qs, 10).get_page(request.GET.get('page'))
-        by_status = {
-            'PLANNED': PersonalProject.objects.filter(status='PLANNED').count(),
-            'IN_PROGRESS': PersonalProject.objects.filter(status='IN_PROGRESS').count(),
-            'COMPLETED': PersonalProject.objects.filter(status='COMPLETED').count(),
-            'ON_HOLD': PersonalProject.objects.filter(status='ON_HOLD').count(),
-        }
-        total_budget = PersonalProject.objects.exclude(budget__isnull=True).aggregate(s=models.Sum('budget'))['s'] or 0
-        # Tasks for a selected project (optional)
-        selected_project = None
-        tasks = []
-        task_form = None
-        if project_id:
-            selected_project = get_object_or_404(PersonalProject, pk=project_id)
-            tasks = selected_project.tasks.all().order_by('-created_at')
-            task_form = TaskForm(initial={'project': selected_project})
-        ctx = self.get_context_data(
-            form=ProjectForm(), page_obj=page, search_query=q,
-            status_selected=status, project_status_counts=by_status, total_budget=total_budget,
-            selected_project=selected_project, tasks=tasks, task_form=task_form,
-        )
-        return self.render_to_response(ctx)
-
-    def post(self, request, *args, **kwargs):
-        if request.POST.get('action') == 'add_task':
-            form = TaskForm(request.POST)
-            if form.is_valid():
-                form.save()
-            pid = request.POST.get('project')
-            return redirect(f"{reverse_lazy('projects')}?project={pid}")
-        form = ProjectForm(request.POST)
-        if form.is_valid():
-            form.save()
-        return redirect('projects')
-
-
-class ProjectTaskEditView(TemplateView):
-    template_name = 'projects.html'
-
-    def get(self, request, pk: int, *args, **kwargs):
-        task = get_object_or_404(PersonalTask, pk=pk)
-        q = request.GET.get('search', '').strip()
-        status = request.GET.get('status', '').strip()
-        page = Paginator(PersonalProject.objects.all().order_by('-created_at'), 10).get_page(request.GET.get('page'))
-        by_status = {
-            'PLANNED': PersonalProject.objects.filter(status='PLANNED').count(),
-            'IN_PROGRESS': PersonalProject.objects.filter(status='IN_PROGRESS').count(),
-            'COMPLETED': PersonalProject.objects.filter(status='COMPLETED').count(),
-            'ON_HOLD': PersonalProject.objects.filter(status='ON_HOLD').count(),
-        }
-        total_budget = PersonalProject.objects.exclude(budget__isnull=True).aggregate(s=models.Sum('budget'))['s'] or 0
-        selected_project = task.project
-        tasks = selected_project.tasks.all().order_by('-created_at')
-        ctx = self.get_context_data(
-            form=ProjectForm(), page_obj=page, search_query=q, status_selected=status,
-            project_status_counts=by_status, total_budget=total_budget,
-            selected_project=selected_project, tasks=tasks, task_form=TaskForm(instance=task), edit_task=True,
-        )
-        return self.render_to_response(ctx)
-
-    def post(self, request, pk: int, *args, **kwargs):
-        task = get_object_or_404(PersonalTask, pk=pk)
-        form = TaskForm(request.POST, instance=task)
-        if form.is_valid():
-            form.save()
-        return redirect(f"{reverse_lazy('projects')}?project={task.project_id}")
-
-
-class ProjectTaskDeleteView(TemplateView):
-    def get(self, request, pk: int, *args, **kwargs):
-        task = get_object_or_404(PersonalTask, pk=pk)
-        pid = task.project_id
-        task.delete()
-        return redirect(f"{reverse_lazy('projects')}?project={pid}")
-
-
-class PersonalAIChatView(PersonalBaseView):
-    template_name = 'ai_chat.html'
-
-    MODELS = AIAssistantView.MODELS
-    AGENTS = AIAssistantView.AGENTS
-    DEFAULT_PROMPTS = AIAssistantView.DEFAULT_PROMPTS
-
-    def get_chat(self):
-        return self.request.session.get('personal_ai_chat', [])
-
-    def set_chat(self, chat):
-        self.request.session['personal_ai_chat'] = chat
-        self.request.session.modified = True
-
-    def post(self, request, *args, **kwargs):
-        model = request.POST.get('model') or 'gpt-5'
-        agent = request.POST.get('agent') or 'general'
-        system_prompt = request.POST.get('system_prompt') or self.DEFAULT_PROMPTS.get(agent, self.DEFAULT_PROMPTS['general'])
-        message = (request.POST.get('message') or '').strip()
-        action = request.POST.get('action')
-
-        if action == 'clear':
-            self.set_chat([])
-            request.session['personal_ai_settings'] = {'model': model, 'agent': agent, 'system_prompt': system_prompt}
-            return self.get(request, *args, **kwargs)
-
-        chat = self.get_chat()[-50:]
-        request.session['personal_ai_settings'] = {'model': model, 'agent': agent, 'system_prompt': system_prompt}
-
-        if message:
-            chat.append({'role': 'user', 'content': message})
+# Helper: AI enrichment for a PersonalTask record
+def enrich_task_record_with_ai(task: PersonalTask):
+    system_prompt = (
+        "You are an expert task assistant for DIY/home projects. For a given task, "
+        "return concise JSON with keys: tips (array of 3-5 bullet tips), "
+        "instructions (array of 5-10 ordered steps), tools (array of common tools), "
+        "materials (array of materials/parts), duration_estimate (human string), "
+        "estimated_cost (human string), safety (array). Keep answers short and practical."
+    )
+    user_msg = (
+        f"Project: {task.project.name}\n"
+        f"Task: {task.title}\n"
+        f"Description: {task.description or ''}\n"
+        f"Section: {task.section or ''}"
+    )
+    reply = chat_with_openai(model='gpt-4o', system_prompt=system_prompt, messages=[{"role": "user", "content": user_msg}])
+    data = None
+    try:
+        data = json.loads(reply)
+    except Exception:
+        import re
+        m = re.search(r"\{[\s\S]*\}", reply)
+        if m:
             try:
-                if agent == 'internal':
-                    reply = rag_chat(model=model, system_prompt=system_prompt, chat=chat)
-                else:
-                    reply = chat_with_openai(model=model, system_prompt=system_prompt, messages=chat)
-            except Exception as e:
-                reply = f"Error: {e}. Ensure OPENAI_API_KEY is set."
-            chat.append({'role': 'assistant', 'content': reply})
-            self.set_chat(chat)
-        return self.get(request, *args, **kwargs)
-
-    def get(self, request, *args, **kwargs):
-        saved = self.request.session.get('personal_ai_settings') or {}
-        model = saved.get('model', 'gpt-5')
-        agent = saved.get('agent', 'general')
-        system_prompt = saved.get('system_prompt', self.DEFAULT_PROMPTS.get(agent, self.DEFAULT_PROMPTS['general']))
-        ctx = self.get_context_data(
-            models=self.MODELS,
-            agents=self.AGENTS,
-            model_selected=model,
-            agent_selected=agent,
-            system_prompt=system_prompt,
-            chat=self.get_chat(),
-        )
-        return self.render_to_response(ctx)
+                data = json.loads(m.group(0))
+            except Exception:
+                data = None
+    if not isinstance(data, dict):
+        data = {"raw": reply}
+    task.ai_suggested = True
+    task.ai_details = data
+    task.save(update_fields=["ai_suggested", "ai_details"])
 
 
-# =====================
+# Exposed endpoint to enrich a task via POST
+@csrf_exempt
+def enrich_task_with_ai(request, pk: int):
+    if request.method != 'POST':
+        return redirect('projects')
+    task = get_object_or_404(PersonalTask, pk=pk)
+    try:
+        enrich_task_record_with_ai(task)
+    except Exception as e:
+        task.ai_details = {"error": str(e)}
+        task.save(update_fields=["ai_details"])
+    return redirect(f"{reverse_lazy('projects')}?project={task.project_id}")
+
+
 # Personal CRUD helpers (edit/delete views)
-# =====================
 class PersonalPropertyEditView(PersonalBaseView):
     template_name = 'properties.html'
 
@@ -1463,3 +1312,243 @@ class PersonalReportDeleteView(PersonalBaseView):
         obj = get_object_or_404(PersonalReport, pk=pk)
         obj.delete()
         return redirect('reports')
+
+
+class GlobalCalendarView(PersonalBaseView):
+    template_name = 'global_calendar.html'
+
+    def get(self, request, *args, **kwargs):
+        # Build unified events for all projects and tasks
+        events = []
+        for p in PersonalProject.objects.all():
+            if p.start_date or p.end_date:
+                start = p.start_date or p.end_date
+                end = p.end_date if (p.start_date and p.end_date) else None
+                evt = {
+                    'title': f"Project: {p.name}",
+                    'start': start.isoformat(),
+                    'backgroundColor': '#93c5fd',
+                }
+                if end:
+                    evt['end'] = end.isoformat()
+                events.append(evt)
+            for t in p.tasks.all():
+                if t.start_date or t.due_date:
+                    start = t.start_date or t.due_date
+                    end = t.due_date if (t.start_date and t.due_date) else None
+                    evt = {
+                        'title': f"{t.title} ({p.name})",
+                        'start': start.isoformat(),
+                        'backgroundColor': '#a78bfa' if t.status == 'IN_PROGRESS' else ('#34d399' if t.status == 'DONE' else '#fbbf24'),
+                    }
+                    if end:
+                        evt['end'] = end.isoformat()
+                    events.append(evt)
+        ctx = self.get_context_data(events_json=json.dumps(events))
+        return self.render_to_response(ctx)
+
+
+class PersonalProjectsView(PersonalBaseView):
+    template_name = 'projects.html'
+
+    def get(self, request, *args, **kwargs):
+        q = request.GET.get('search', '').strip()
+        status = request.GET.get('status', '').strip()
+        qs = PersonalProject.objects.all().order_by('-created_at')
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
+        if status:
+            qs = qs.filter(status=status)
+        page = Paginator(qs, 10).get_page(request.GET.get('page'))
+        by_status = {
+            'PLANNED': PersonalProject.objects.filter(status='PLANNED').count(),
+            'IN_PROGRESS': PersonalProject.objects.filter(status='IN_PROGRESS').count(),
+            'COMPLETED': PersonalProject.objects.filter(status='COMPLETED').count(),
+            'ON_HOLD': PersonalProject.objects.filter(status='ON_HOLD').count(),
+        }
+        total_budget = PersonalProject.objects.exclude(budget__isnull=True).aggregate(s=models.Sum('budget'))['s'] or 0
+        ctx = self.get_context_data(
+            form=ProjectForm(), page_obj=page, search_query=q,
+            status_selected=status, project_status_counts=by_status, total_budget=total_budget,
+        )
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        if request.POST.get('action') == 'add_task':
+            form = TaskForm(request.POST)
+            task = None
+            if form.is_valid():
+                task = form.save()
+                # Optional: enrich with AI immediately if requested
+                enrich_flag = request.POST.get('enrich_on_add') in ('on', 'true', '1')
+                if enrich_flag and task:
+                    try:
+                        enrich_task_record_with_ai(task)
+                    except Exception:
+                        pass
+            pid = request.POST.get('project')
+            return redirect(f"{reverse_lazy('projects')}?project={pid}")
+        if request.POST.get('action') == 'upload_media':
+            pid = request.POST.get('project')
+            project = get_object_or_404(PersonalProject, pk=pid)
+            from .models import PersonalProjectMedia
+            m = PersonalProjectMedia(project=project)
+            m.caption = request.POST.get('caption') or None
+            if request.FILES.get('file'):
+                m.file = request.FILES['file']
+            url = (request.POST.get('url') or '').strip()
+            if url:
+                m.url = url
+            if not m.file and not m.url:
+                return redirect(f"{reverse_lazy('projects')}?project={pid}")
+            m.save()
+            return redirect(f"{reverse_lazy('projects')}?project={pid}")
+        form = ProjectForm(request.POST)
+        if form.is_valid():
+            form.save()
+        return redirect('projects')
+
+
+# New: Personal section root dashboard
+class PersonalDashboardView(PersonalBaseView):
+    template_name = 'dashboard.html'
+
+    def get(self, request, *args, **kwargs):
+        counts = {
+            'properties': PersonalProperty.objects.count(),
+            'assets': PersonalAsset.objects.count(),
+            'projects': PersonalProject.objects.count(),
+            'repairs': PersonalRepair.objects.count(),
+            'documents': PersonalDocument.objects.count(),
+            'reports': PersonalReport.objects.count(),
+            'tasks': PersonalTask.objects.count(),
+        }
+        recent_projects = PersonalProject.objects.all().order_by('-created_at')[:5]
+        recent_tasks = PersonalTask.objects.all().order_by('-created_at')[:5]
+        ctx = self.get_context_data(counts=counts, recent_projects=recent_projects, recent_tasks=recent_tasks)
+        return self.render_to_response(ctx)
+
+
+# New: Properties list/create
+class PersonalPropertiesView(PersonalBaseView):
+    template_name = 'properties.html'
+
+    def get(self, request, *args, **kwargs):
+        q = request.GET.get('search', '').strip()
+        qs = PersonalProperty.objects.all().order_by('-created_at')
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(address__icontains=q))
+        page = Paginator(qs, 10).get_page(request.GET.get('page'))
+        ctx = self.get_context_data(form=PropertyForm(), page_obj=page, search_query=q)
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        form = PropertyForm(request.POST)
+        if form.is_valid():
+            form.save()
+        return redirect('properties')
+
+
+# New: Assets list/create
+class PersonalAssetsView(PersonalBaseView):
+    template_name = 'assets.html'
+
+    def get(self, request, *args, **kwargs):
+        q = request.GET.get('search', '').strip()
+        cat = request.GET.get('category', '').strip()
+        qs = PersonalAsset.objects.all().order_by('-created_at')
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(category__icontains=q))
+        if cat:
+            qs = qs.filter(category__iexact=cat)
+        page = Paginator(qs, 10).get_page(request.GET.get('page'))
+        categories = (
+            PersonalAsset.objects.exclude(category__isnull=True)
+            .exclude(category__exact='')
+            .values_list('category', flat=True).distinct().order_by('category')
+        )
+        ctx = self.get_context_data(form=AssetForm(), page_obj=page, search_query=q, categories=categories, category_selected=cat)
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        form = AssetForm(request.POST)
+        if form.is_valid():
+            form.save()
+        return redirect('assets')
+
+
+# New: Task edit/delete within projects
+class ProjectTaskEditView(PersonalBaseView):
+    template_name = 'projects.html'
+
+    def get(self, request, pk: int, *args, **kwargs):
+        task = get_object_or_404(PersonalTask, pk=pk)
+        project = task.project
+        q = request.GET.get('search', '').strip()
+        status = request.GET.get('status', '').strip()
+        page = Paginator(PersonalProject.objects.all().order_by('-created_at'), 10).get_page(request.GET.get('page'))
+        by_status = {
+            'PLANNED': PersonalProject.objects.filter(status='PLANNED').count(),
+            'IN_PROGRESS': PersonalProject.objects.filter(status='IN_PROGRESS').count(),
+            'COMPLETED': PersonalProject.objects.filter(status='COMPLETED').count(),
+            'ON_HOLD': PersonalProject.objects.filter(status='ON_HOLD').count(),
+        }
+        total_budget = PersonalProject.objects.exclude(budget__isnull=True).aggregate(s=models.Sum('budget'))['s'] or 0
+        tasks = project.tasks.all().order_by('-created_at')
+        ctx = self.get_context_data(
+            form=ProjectForm(instance=project), page_obj=page, search_query=q,
+            status_selected=status, project_status_counts=by_status, total_budget=total_budget,
+            selected_project=project, tasks=tasks, task_form=TaskForm(instance=task), edit_task=True,
+        )
+        return self.render_to_response(ctx)
+
+    def post(self, request, pk: int, *args, **kwargs):
+        task = get_object_or_404(PersonalTask, pk=pk)
+        form = TaskForm(request.POST, instance=task)
+        if form.is_valid():
+            form.save()
+        return redirect(f"{reverse_lazy('projects')}?project={task.project_id}")
+
+
+class ProjectTaskDeleteView(PersonalBaseView):
+    def get(self, request, pk: int, *args, **kwargs):
+        task = get_object_or_404(PersonalTask, pk=pk)
+        pid = task.project_id
+        task.delete()
+        return redirect(f"{reverse_lazy('projects')}?project={pid}")
+
+
+# New: Personal AI Chat
+class PersonalAIChatView(PersonalBaseView, FormView):
+    template_name = 'ai_chat.html'
+    form_class = forms.Form
+    success_url = reverse_lazy('personal_ai')
+
+    def get_chat(self):
+        return self.request.session.get('personal_ai_chat', [])
+
+    def set_chat(self, chat):
+        self.request.session['personal_ai_chat'] = chat
+        self.request.session.modified = True
+
+    def post(self, request, *args, **kwargs):
+        action = request.POST.get('action')
+        if action == 'clear':
+            self.set_chat([])
+            return self.form_valid(form=None)
+        message = (request.POST.get('message') or '').strip()
+        chat = self.get_chat()[-50:]
+        if message:
+            chat.append({'role': 'user', 'content': message})
+            try:
+                reply = chat_with_openai(model='gpt-4o', system_prompt='You are a concise, helpful home projects assistant.', messages=chat)
+            except Exception as e:
+                reply = f"Error: {e}. Ensure OPENAI_API_KEY is set."
+            chat.append({'role': 'assistant', 'content': reply})
+            self.set_chat(chat)
+        return self.form_valid(form=None)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update({'chat': self.get_chat()})
+        return ctx

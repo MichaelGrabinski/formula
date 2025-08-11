@@ -14,6 +14,27 @@ from unfold.contrib.constance.settings import UNFOLD_CONSTANCE_ADDITIONAL_FIELDS
 ######################################################################
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load .env for local runs (works even if python-dotenv is missing)
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv(dotenv_path=BASE_DIR / ".env")
+except Exception:
+    # Fallback: simple .env reader
+    try:
+        env_path = BASE_DIR / ".env"
+        if env_path.exists():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip().strip('"\'')
+                if key and (key not in environ):
+                    environ[key] = val
+    except Exception:
+        pass
+
 SECRET_KEY = environ.get("SECRET_KEY", get_random_secret_key())
 
 DEBUG = True
@@ -102,7 +123,7 @@ TEMPLATES = [
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
             path.normpath(path.join(BASE_DIR, "formula/templates")),
-            path.normpath(path.join(BASE_DIR, "personal-management-platform", "templates")),
+            path.normpath(path.join(BASE_DIR, "personal-management-platform/templates")),
         ],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -495,7 +516,7 @@ PLAUSIBLE_DOMAIN = environ.get("PLAUSIBLE_DOMAIN")
 SENTRY_DSN = environ.get("SENTRY_DSN")
 
 # AI providers (OpenAI only)
-OPENAI_API_KEY = environ.get("no")
+OPENAI_API_KEY = environ.get("OPENAI_API_KEY")
 OPENAI_BASE_URL = environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
 if SENTRY_DSN:

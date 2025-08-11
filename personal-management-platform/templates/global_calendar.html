@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">Global Calendar</h1>
+<div class="max-w-7xl mx-auto">
+  <div id="global-calendar" class="border border-border rounded w-full h-[70vh] min-h-[560px]" data-events='{{ events_json|escapejs }}'></div>
+</div>
+
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const el = document.getElementById('global-calendar');
+    let events = [];
+    try { events = JSON.parse(el.getAttribute('data-events') || '[]'); } catch (e) { events = []; }
+    const cal = new FullCalendar.Calendar(el, {
+      height: '100%',
+      contentHeight: 'auto',
+      aspectRatio: 1.5,
+      initialView: 'dayGridMonth',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+      },
+      events,
+    });
+    cal.render();
+  });
+</script>
+{% endblock %}

@@ -15,11 +15,17 @@
         </select>
         <button type="submit" class="px-4 py-2 bg-secondary text-secondary-foreground rounded-r-md hover:bg-secondary-foreground hover:text-secondary">Search</button>
     </form>
-    <button onclick="document.getElementById('add-project-form').classList.toggle('hidden')" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">Add Project</button>
+    <div class="flex gap-2">
+      <a href="{% url 'global_calendar' %}" class="px-4 py-2 bg-accent text-accent-foreground rounded">Global Calendar</a>
+      {% if form %}
+      <button onclick="document.getElementById('add-project-form').classList.toggle('hidden')" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">Add Project</button>
+      {% endif %}
+    </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-  <div class="lg:col-span-2">
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+  <div class="xl:col-span-2">
+    {% if form %}
     <div id="add-project-form" class="{% if edit_project %}mb-6{% else %}hidden mb-6{% endif %}">
       <form method="post" class="mb-6">
           {% csrf_token %}
@@ -29,35 +35,404 @@
           <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">{% if edit_project %}Save Changes{% else %}Add Project{% endif %}</button>
       </form>
     </div>
+    {% endif %}
 
-    <table class="min-w-full divide-y divide-border mb-6">
-        <thead>
-           <tr class="bg-secondary">
-               <th class="px-4 py-2 text-left text-secondary-foreground">Name</th>
-               <th class="px-4 py-2 text-left text-secondary-foreground">Status</th>
-               <th class="px-4 py-2 text-left text-secondary-foreground">Budget</th>
-               <th class="px-4 py-2 text-left text-secondary-foreground">Assigned To</th>
-               <th class="px-4 py-2 text-left text-secondary-foreground">Tasks</th>
-               <th class="px-4 py-2 text-left text-secondary-foreground">Open</th>
-           </tr>
-        </thead>
-        <tbody>
-           {% for project in page_obj %}
-           <tr class="even:bg-muted">
-               <td class="px-4 py-2"><a class="text-blue-600 hover:underline" href="?project={{ project.id }}">{{ project.name }}</a></td>
-               <td class="px-4 py-2">{{ project.status }}</td>
-               <td class="px-4 py-2">{% if project.budget %}${{ project.budget }}{% endif %}</td>
-               <td class="px-4 py-2">{{ project.assigned_to }}</td>
-               <td class="px-4 py-2">{{ project.tasks.count }}</td>
-               <td class="px-4 py-2">{{ project.tasks.all|dictsort:'status'|slice:':1'|length }}</td>
-           </tr>
-           {% empty %}
-           <tr><td colspan="6" class="px-4 py-2">No projects found.</td></tr>
-           {% endfor %}
-        </tbody>
-    </table>
+    <!-- Collapsible project list with inline sections and tasks -->
+    <div class="space-y-3">
+      {% for project in page_obj %}
+        <div class="border border-border rounded overflow-hidden">
+          <button type="button" class="w-full text-left px-4 py-3 bg-secondary text-secondary-foreground flex items-center justify-between" onclick="toggleProject('{{ project.id }}')">
+            <span class="font-medium">{{ project.name }}</span>
+            <span class="text-sm">{{ project.status }} • {{ project.tasks.count }} tasks</span>
+          </button>
+          <div id="project-{{ project.id }}" class="hidden p-4 space-y-6" data-events='[
+            {% for t in project.tasks.all %}
+              {% if t.start_date or t.due_date %}
+                {"title":"{{ t.title|escapejs }}","start":"{{ t.start_date|date:"Y-m-d" }}","end":"{{ t.due_date|date:"Y-m-d" }}" }{% if not forloop.last %},{% endif %}
+              {% endif %}
+            {% endfor %}
+          ]'>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 class="font-semibold mb-2">Details</h4>
+                <ul class="text-sm space-y-1">
+                  <li>Assigned: {{ project.assigned_to|default:"-" }}</li>
+                  <li>Budget: {% if project.budget %}${{ project.budget }}{% else %}-{% endif %}</li>
+                  <li>Dates: {% if project.start_date %}{{ project.start_date }}{% else %}—{% endif %} → {% if project.end_date %}{{ project.end_date }}{% else %}—{% endif %}</li>
+                </ul>
+              </div>
+              <div>
+                <h4 class="font-semibold mb-2">Quick Add Task</h4>
+                <form method="post" class="space-y-2">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="add_task" />
+                  <input type="hidden" name="project" value="{{ project.id }}" />
+                  <input class="w-full p-2 border border-input rounded" name="title" placeholder="Task title" required />
+                  <textarea class="w-full p-2 border border-input rounded" name="description" rows="2" placeholder="Short description (optional)"></textarea>
+                  <input class="w-full p-2 border border-input rounded" name="section" placeholder="Section (optional)" />
+                  <div class="flex gap-2">
+                    <select name="status" class="p-2 border border-input flex-1">
+                      <option value="TODO">To Do</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="DONE">Done</option>
+                    </select>
+                    <select name="priority" class="p-2 border border-input flex-1">
+                      <option value="">Priority</option>
+                      <option value="LOW">Low</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="HIGH">High</option>
+                    </select>
+                  </div>
+                  <div class="flex gap-2">
+                    <input class="p-2 border border-input rounded flex-1" type="date" name="start_date" />
+                    <input class="p-2 border border-input rounded flex-1" type="date" name="due_date" />
+                  </div>
+                  <div class="flex gap-2">
+                    <input class="p-2 border border-input rounded flex-1" type="number" name="progress" min="0" max="100" placeholder="Progress %" />
+                    <input class="p-2 border border-input rounded flex-1" name="assigned_to" placeholder="Assignee" />
+                  </div>
+                  <div class="flex items-center gap-4 text-sm">
+                    <label class="inline-flex items-center gap-2"><input type="checkbox" name="ai_suggested" class="h-4 w-4" /> Mark as AI-suggested</label>
+                    <label class="inline-flex items-center gap-2"><input type="checkbox" name="enrich_on_add" class="h-4 w-4" /> Enrich with AI after adding</label>
+                  </div>
+                  <button type="submit" class="px-3 py-2 bg-primary text-primary-foreground rounded">Add</button>
+                </form>
+              </div>
+            </div>
 
-    <nav class="flex justify-center">
+            <!-- Tasks: stacked sections with horizontal rows -->
+            <div class="space-y-6">
+              <h4 class="font-semibold">Tasks</h4>
+
+              <!-- To Do Row -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <h5 class="text-sm font-medium">To Do</h5>
+                  <span class="text-xs text-muted-foreground">{{ project.tasks.all|length }} total</span>
+                </div>
+                <div class="flex gap-4 overflow-x-auto sm:flex-wrap sm:overflow-x-visible pb-1">
+                  {% for t in project.tasks.all %}
+                    {% if t.status == 'TODO' %}
+                      <div class="min-w-[380px] sm:min-w-[440px] lg:min-w-[520px] w-[90vw] sm:w-auto border border-border rounded p-4 bg-card text-card-foreground min-h-[200px]">
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="font-medium text-base truncate" title="{{ t.title }}">{{ t.title }}</div>
+                          <div class="flex items-center gap-2 text-xs">
+                            {% if t.priority %}<span class="px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ t.priority }}</span>{% endif %}
+                            {% if t.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
+                          </div>
+                        </div>
+                        {% if t.assigned_to %}<div class="mt-1 text-xs text-muted-foreground">Assigned: {{ t.assigned_to }}</div>{% endif %}
+                        {% if t.section %}<div class="text-xs text-muted-foreground">Section: {{ t.section }}</div>{% endif %}
+                        {% if t.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ t.description }}</div>{% endif %}
+                        {% if t.start_date or t.due_date %}
+                          <div class="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                            <span>{{ t.start_date|default:"?" }} → {{ t.due_date|default:"?" }}</span>
+                            {% if t.due_date and t.due_date < today %}
+                              <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">Overdue</span>
+                            {% elif t.due_date and t.due_date <= today_plus_3 %}
+                              <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700">Due soon</span>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        {% if t.ai_details %}
+                          <div class="mt-3 border-t border-border pt-2">
+                            {% if t.ai_details.duration_estimate %}<div class="text-xs mb-1"><strong>Duration:</strong> {{ t.ai_details.duration_estimate }}</div>{% endif %}
+                            {% if t.ai_details.tools %}
+                              <div class="text-xs mb-1"><strong>Tools:</strong>
+                                <span class="inline-flex flex-wrap gap-1">
+                                  {% for tool in t.ai_details.tools %}<span class="px-2 py-0.5 bg-muted rounded">{{ tool }}</span>{% endfor %}
+                                </span>
+                              </div>
+                            {% endif %}
+                            {% if t.ai_details.materials %}
+                              <div class="text-xs mb-1"><strong>Materials:</strong>
+                                <span class="inline-flex flex-wrap gap-1">
+                                  {% for m in t.ai_details.materials %}<span class="px-2 py-0.5 bg-muted rounded">{{ m }}</span>{% endfor %}
+                                </span>
+                              </div>
+                            {% endif %}
+                            {% if t.ai_details.estimated_cost %}<div class="text-xs mb-1"><strong>Est. Cost:</strong> {{ t.ai_details.estimated_cost }}</div>{% endif %}
+                            {% if t.ai_details.tips %}
+                              <details class="text-xs">
+                                <summary class="cursor-pointer">AI Tips</summary>
+                                <ul class="list-disc ml-5 mt-1">
+                                  {% for tip in t.ai_details.tips %}<li>{{ tip }}</li>{% endfor %}
+                                </ul>
+                              </details>
+                            {% endif %}
+                            {% if t.ai_details.safety %}
+                              <details class="text-xs mt-1">
+                                <summary class="cursor-pointer">Safety notes</summary>
+                                <ul class="list-disc ml-5 mt-1">
+                                  {% for s in t.ai_details.safety %}<li>{{ s }}</li>{% endfor %}
+                                </ul>
+                              </details>
+                            {% endif %}
+                            {% if t.ai_details.instructions %}
+                              <details class="text-xs mt-1">
+                                <summary class="cursor-pointer">AI Instructions</summary>
+                                <ol class="list-decimal ml-5 mt-1">
+                                  {% for s in t.ai_details.instructions %}<li>{{ s }}</li>{% endfor %}
+                                </ol>
+                                <button type="button" class="mt-2 text-blue-600 hover:underline" onclick="copyAIInstructions(this)">Copy instructions</button>
+                              </details>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
+                          <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
+                          <form method="post" action="{% url 'enrich_task' t.id %}" class="inline">
+                            {% csrf_token %}
+                            <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
+                          </form>
+                        </div>
+                      </div>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- In Progress Row -->
+              <div>
+                <h5 class="text-sm font-medium mb-2">In Progress</h5>
+                <div class="flex gap-4 overflow-x-auto sm:flex-wrap sm:overflow-x-visible pb-1">
+                  {% for t in project.tasks.all %}
+                    {% if t.status == 'IN_PROGRESS' %}
+                      <div class="min-w-[380px] sm:min-w-[440px] lg:min-w-[520px] w-[90vw] sm:w-auto border border-border rounded p-4 bg-card text-card-foreground min-h-[220px]">
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="font-medium text-base truncate" title="{{ t.title }}">{{ t.title }}</div>
+                          <div class="flex items-center gap-2 text-xs">
+                            {% if t.priority %}<span class="px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ t.priority }}</span>{% endif %}
+                            {% if t.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
+                          </div>
+                        </div>
+                        {% if t.assigned_to %}<div class="mt-1 text-xs text-muted-foreground">Assigned: {{ t.assigned_to }}</div>{% endif %}
+                        {% if t.section %}<div class="text-xs text-muted-foreground">Section: {{ t.section }}</div>{% endif %}
+                        {% if t.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ t.description }}</div>{% endif %}
+                        {% if t.start_date or t.due_date %}
+                          <div class="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                            <span>{{ t.start_date|default:"?" }} → {{ t.due_date|default:"?" }}</span>
+                            {% if t.due_date and t.due_date < today %}
+                              <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">Overdue</span>
+                            {% elif t.due_date and t.due_date <= today_plus_3 %}
+                              <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700">Due soon</span>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        <div class="mt-3">
+                          <div class="h-3 bg-muted rounded">
+                            <div class="h-3 bg-primary rounded progress-bar" data-progress="{{ t.progress|default_if_none:0 }}" style="width: 0%"></div>
+                          </div>
+                          <div class="mt-1 text-xs text-muted-foreground">{{ t.progress|default_if_none:0 }}%</div>
+                        </div>
+                        {% if t.ai_details %}
+                          <div class="mt-3 border-t border-border pt-2">
+                            {% if t.ai_details.duration_estimate %}<div class="text-xs mb-1"><strong>Duration:</strong> {{ t.ai_details.duration_estimate }}</div>{% endif %}
+                            {% if t.ai_details.tools %}
+                              <div class="text-xs mb-1"><strong>Tools:</strong>
+                                <span class="inline-flex flex-wrap gap-1">
+                                  {% for tool in t.ai_details.tools %}<span class="px-2 py-0.5 bg-muted rounded">{{ tool }}</span>{% endfor %}
+                                </span>
+                              </div>
+                            {% endif %}
+                            {% if t.ai_details.materials %}
+                              <div class="text-xs mb-1"><strong>Materials:</strong>
+                                <span class="inline-flex flex-wrap gap-1">
+                                  {% for m in t.ai_details.materials %}<span class="px-2 py-0.5 bg-muted rounded">{{ m }}</span>{% endfor %}
+                                </span>
+                              </div>
+                            {% endif %}
+                            {% if t.ai_details.estimated_cost %}<div class="text-xs mb-1"><strong>Est. Cost:</strong> {{ t.ai_details.estimated_cost }}</div>{% endif %}
+                            {% if t.ai_details.tips %}
+                              <details class="text-xs">
+                                <summary class="cursor-pointer">AI Tips</summary>
+                                <ul class="list-disc ml-5 mt-1">
+                                  {% for tip in t.ai_details.tips %}<li>{{ tip }}</li>{% endfor %}
+                                </ul>
+                              </details>
+                            {% endif %}
+                            {% if t.ai_details.safety %}
+                              <details class="text-xs mt-1">
+                                <summary class="cursor-pointer">Safety notes</summary>
+                                <ul class="list-disc ml-5 mt-1">
+                                  {% for s in t.ai_details.safety %}<li>{{ s }}</li>{% endfor %}
+                                </ul>
+                              </details>
+                            {% endif %}
+                            {% if t.ai_details.instructions %}
+                              <details class="text-xs mt-1">
+                                <summary class="cursor-pointer">AI Instructions</summary>
+                                <ol class="list-decimal ml-5 mt-1">
+                                  {% for s in t.ai_details.instructions %}<li>{{ s }}</li>{% endfor %}
+                                </ol>
+                                <button type="button" class="mt-2 text-blue-600 hover:underline" onclick="copyAIInstructions(this)">Copy instructions</button>
+                              </details>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
+                          <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
+                          <form method="post" action="{% url 'enrich_task' t.id %}" class="inline">
+                            {% csrf_token %}
+                            <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
+                          </form>
+                        </div>
+                      </div>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- Done Row -->
+              <div>
+                <h5 class="text-sm font-medium mb-2">Done</h5>
+                <div class="flex gap-4 overflow-x-auto sm:flex-wrap sm:overflow-x-visible pb-1">
+                  {% for t in project.tasks.all %}
+                    {% if t.status == 'DONE' %}
+                      <div class="min-w-[380px] sm:min-w-[440px] lg:min-w-[520px] w-[90vw] sm:w-auto border border-border rounded p-4 bg-card text-card-foreground min-h-[200px]">
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="font-medium text-base truncate" title="{{ t.title }}">{{ t.title }}</div>
+                          <div class="flex items-center gap-2 text-xs">
+                            {% if t.priority %}<span class="px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ t.priority }}</span>{% endif %}
+                            {% if t.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
+                          </div>
+                        </div>
+                        {% if t.assigned_to %}<div class="mt-1 text-xs text-muted-foreground">Assigned: {{ t.assigned_to }}</div>{% endif %}
+                        {% if t.section %}<div class="text-xs text-muted-foreground">Section: {{ t.section }}</div>{% endif %}
+                        {% if t.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ t.description }}</div>{% endif %}
+                        {% if t.start_date or t.due_date %}
+                          <div class="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                            <span>{{ t.start_date|default:"?" }} → {{ t.due_date|default:"?" }}</span>
+                            {% if t.due_date and t.due_date < today %}
+                              <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">Overdue</span>
+                            {% elif t.due_date and t.due_date <= today_plus_3 %}
+                              <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700">Due soon</span>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        {% if t.ai_details %}
+                          <div class="mt-3 border-t border-border pt-2">
+                            {% if t.ai_details.duration_estimate %}<div class="text-xs mb-1"><strong>Duration:</strong> {{ t.ai_details.duration_estimate }}</div>{% endif %}
+                            {% if t.ai_details.estimated_cost %}<div class="text-xs mb-1"><strong>Est. Cost:</strong> {{ t.ai_details.estimated_cost }}</div>{% endif %}
+                            {% if t.ai_details.tools %}
+                              <div class="text-xs mb-1"><strong>Tools:</strong>
+                                <span class="inline-flex flex-wrap gap-1">
+                                  {% for tool in t.ai_details.tools %}<span class="px-2 py-0.5 bg-muted rounded">{{ tool }}</span>{% endfor %}
+                                </span>
+                              </div>
+                            {% endif %}
+                            {% if t.ai_details.materials %}
+                              <div class="text-xs mb-1"><strong>Materials:</strong>
+                                <span class="inline-flex flex-wrap gap-1">
+                                  {% for m in t.ai_details.materials %}<span class="px-2 py-0.5 bg-muted rounded">{{ m }}</span>{% endfor %}
+                                </span>
+                              </div>
+                            {% endif %}
+                            {% if t.ai_details.safety %}
+                              <details class="text-xs">
+                                <summary class="cursor-pointer">Safety notes</summary>
+                                <ul class="list-disc ml-5 mt-1">
+                                  {% for s in t.ai_details.safety %}<li>{{ s }}</li>{% endfor %}
+                                </ul>
+                              </details>
+                            {% endif %}
+                          </div>
+                        {% endif %}
+                        <div class="mt-3 text-xs text-muted-foreground">Progress: {{ t.progress|default_if_none:100 }}%</div>
+                        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
+                          <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
+                          <form method="post" action="{% url 'enrich_task' t.id %}" class="inline">
+                            {% csrf_token %}
+                            <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
+                          </form>
+                        </div>
+                      </div>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Calendar (FullCalendar via CDN) -->
+            <div>
+              <h4 class="font-semibold mb-2">Calendar</h4>
+              <div id="cal-{{ project.id }}" class="border border-border rounded h-[320px] md:h-[380px] lg:h-[420px]"></div>
+            </div>
+
+            <!-- Simple Gantt chart -->
+            <div>
+              <h4 class="font-semibold mb-2">Gantt</h4>
+              <div class="space-y-2">
+                {% for t in project.tasks.all %}
+                  {% if t.start_date and t.due_date %}
+                    <div class="text-xs">{{ t.title }}</div>
+                    <div class="h-3 bg-muted rounded relative overflow-hidden">
+                      <div class="absolute left-0 top-0 h-3 bg-primary" data-start="{{ t.start_date|date:'U' }}" data-end="{{ t.due_date|date:'U' }}"></div>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- Media Upload & Gallery -->
+            <div>
+              <h4 class="font-semibold mb-2">Project Media</h4>
+              <form method="post" enctype="multipart/form-data" action="{% url 'projects' %}?project={{ project.id }}" class="flex flex-col gap-2 md:flex-row md:items-end">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="upload_media" />
+                <input type="hidden" name="project" value="{{ project.id }}" />
+                <div class="flex-1">
+                  <label class="block text-sm mb-1">Upload file</label>
+                  <input type="file" name="file" class="block w-full text-sm" accept="image/*,video/*,.gif" />
+                </div>
+                <div class="flex-1">
+                  <label class="block text-sm mb-1">Or paste URL</label>
+                  <input type="url" name="url" placeholder="https://..." class="w-full p-2 border border-input rounded" />
+                </div>
+                <div class="flex-1">
+                  <label class="block text-sm mb-1">Caption</label>
+                  <input name="caption" class="w-full p-2 border border-input rounded" />
+                </div>
+                <button class="px-3 py-2 bg-primary text-primary-foreground rounded" type="submit">Add Media</button>
+              </form>
+              <div id="media-{{ project.id }}" class="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" data-media='[
+                {% for m in project.media.all %}
+                  {"src":"{{ m.file.url|default:m.url|escapejs }}","type":"{{ m.media_type }}","caption":"{{ m.caption|default:''|escapejs }}"}{% if not forloop.last %},{% endif %}
+                {% endfor %}
+              ]'>
+                {% for m in project.media.all %}
+                  <div class="border border-border rounded p-2 cursor-pointer" data-index="{{ forloop.counter0 }}" onclick="openLightbox('{{ project.id }}', this.dataset.index)">
+                    {% if m.media_type == 'image' %}
+                      <div class="w-full aspect-[4/3] overflow-hidden rounded">
+                        <img src="{{ m.file.url|default:m.url }}" alt="{{ m.caption }}" class="w-full h-full object-cover" />
+                      </div>
+                    {% elif m.media_type == 'video' %}
+                      <div class="w-full aspect-[4/3] overflow-hidden rounded">
+                        <video class="w-full h-full object-cover" muted>
+                          <source src="{{ m.file.url|default:m.url }}" />
+                        </video>
+                      </div>
+                    {% else %}
+                      <div class="text-sm"><a href="{{ m.file.url|default:m.url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener">Open</a></div>
+                    {% endif %}
+                    {% if m.caption %}<div class="mt-1 text-xs">{{ m.caption }}</div>{% endif %}
+                  </div>
+                {% empty %}
+                  <div class="text-sm text-muted-foreground col-span-full">No media yet.</div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+      {% empty %}
+        <div class="text-sm text-muted-foreground">No projects found.</div>
+      {% endfor %}
+    </div>
+
+    <nav class="mt-6 flex justify-center">
         <ul class="inline-flex items-center space-x-1">
             {% if page_obj.has_previous %}
             <li>
@@ -80,38 +455,7 @@
 
   <div>
     <div class="bg-card text-card-foreground rounded p-4 border border-border">
-      <h2 class="text-xl font-medium mb-2">Tasks</h2>
-      {% if selected_project %}
-        <p class="text-sm text-muted-foreground mb-2">Project: <strong>{{ selected_project.name }}</strong></p>
-        <form method="post" class="mb-4">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="add_task" />
-          {{ task_form.as_p }}
-          <button type="submit" class="px-3 py-2 bg-primary text-primary-foreground rounded">Add Task</button>
-        </form>
-        <ul class="space-y-2">
-          {% for t in tasks %}
-            <li class="border border-border rounded p-2 flex items-center justify-between">
-              <div>
-                <div class="font-medium">{{ t.title }} <span class="text-xs text-muted-foreground">({{ t.status }})</span></div>
-                {% if t.due_date %}<div class="text-xs text-muted-foreground">Due: {{ t.due_date }}</div>{% endif %}
-              </div>
-              <div class="space-x-2">
-                <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
-                <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
-              </div>
-            </li>
-          {% empty %}
-            <li class="text-sm text-muted-foreground">No tasks yet.</li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-sm text-muted-foreground">Select a project to manage its tasks.</p>
-      {% endif %}
-    </div>
-
-    <div class="bg-card text-card-foreground rounded p-4 border border-border mt-4">
-      <h3 class="text-lg font-medium mb-2">Project KPIs</h3>
+      <h2 class="text-xl font-medium mb-2">Overview</h2>
       <ul class="text-sm space-y-1">
         <li>Planned: {{ project_status_counts.PLANNED }}</li>
         <li>In Progress: {{ project_status_counts.IN_PROGRESS }}</li>
@@ -122,4 +466,114 @@
     </div>
   </div>
 </div>
+
+<!-- Lightbox modal -->
+<div id="lightbox" class="fixed inset-0 bg-black/80 hidden z-50">
+  <div class="w-full h-full flex items-center justify-center relative p-4">
+    <button class="absolute top-4 right-4 px-3 py-1 bg-white/20 text-white rounded" onclick="closeLightbox()">Close</button>
+    <button class="absolute left-4 top-1/2 -translate-y-1/2 px-3 py-2 bg-white/20 text-white rounded" onclick="prevMedia()">‹</button>
+    <div id="lightbox-content" class="text-center"></div>
+    <button class="absolute right-4 top-1/2 -translate-y-1/2 px-3 py-2 bg-white/20 text-white rounded" onclick="nextMedia()">›</button>
+  </div>
+</div>
+
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script>
+  function toggleProject(id){
+    const wrap = document.getElementById('project-'+id);
+    if(!wrap) return;
+    wrap.classList.toggle('hidden');
+    const calEl = document.getElementById('cal-'+id);
+    if(calEl && !calEl.dataset.inited){
+      let events = [];
+      try { events = JSON.parse(wrap.getAttribute('data-events')||'[]'); } catch (e) { events = []; }
+      const cal = new FullCalendar.Calendar(calEl, { initialView: 'dayGridMonth', height: '100%', contentHeight: 'auto', aspectRatio: 1.4, events });
+      cal.render();
+      calEl.dataset.inited = '1';
+    }
+    // simple Gantt width calc (10px per day)
+    wrap.querySelectorAll('[data-start][data-end]').forEach(el => {
+      const start = parseInt(el.getAttribute('data-start'), 10);
+      const end = parseInt(el.getAttribute('data-end'), 10);
+      if(!isNaN(start) && !isNaN(end) && end > start){
+        const days = Math.ceil((end - start) / 86400);
+        el.style.width = (days * 10) + 'px';
+      }
+    });
+    // set progress bars widths from data-progress
+    wrap.querySelectorAll('.progress-bar[data-progress]').forEach(el => {
+      const p = parseInt(el.getAttribute('data-progress'), 10);
+      if(!isNaN(p)){
+        const clamped = Math.max(0, Math.min(100, p));
+        el.style.width = clamped + '%';
+      }
+    });
+  }
+
+  // Auto-open project panel if ?project=ID is present
+  document.addEventListener('DOMContentLoaded', function(){
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get('project');
+    if(pid){
+      // open and scroll into view
+      toggleProject(pid);
+      const btn = document.querySelector(`button[onclick="toggleProject('${pid}')"]`);
+      if(btn){ btn.scrollIntoView({behavior:'smooth', block:'start'}); }
+    }
+  });
+
+  // Simple lightbox for media
+  let currentMediaList = [];
+  let currentMediaIndex = 0;
+  function openLightbox(projectId, index){
+    const grid = document.getElementById('media-'+projectId);
+    try { currentMediaList = JSON.parse(grid.getAttribute('data-media') || '[]'); } catch(e) { currentMediaList = []; }
+    currentMediaIndex = parseInt(index || 0, 10) || 0;
+    renderLightbox();
+    document.getElementById('lightbox').classList.remove('hidden');
+  }
+  function renderLightbox(){
+    const item = currentMediaList[currentMediaIndex];
+    const box = document.getElementById('lightbox-content');
+    if(!item){ closeLightbox(); return; }
+    let html = '';
+    if(item.type === 'image'){
+      html = `<img src="${item.src}" class="max-h-[80vh] max-w-[90vw] object-contain" alt="">`;
+    } else if(item.type === 'video'){
+      html = `<video class="max-h-[80vh] max-w-[90vw]" controls autoplay><source src="${item.src}"></video>`;
+    } else {
+      html = `<a href="${item.src}" target="_blank" class="text-white underline">Open file</a>`;
+    }
+    if(item.caption){ html += `<div class="mt-2 text-white text-sm">${item.caption}</div>`; }
+    box.innerHTML = html;
+  }
+  function closeLightbox(){ document.getElementById('lightbox').classList.add('hidden'); }
+  function nextMedia(){ if(!currentMediaList.length) return; currentMediaIndex = (currentMediaIndex + 1) % currentMediaList.length; renderLightbox(); }
+  function prevMedia(){ if(!currentMediaList.length) return; currentMediaIndex = (currentMediaIndex - 1 + currentMediaList.length) % currentMediaList.length; renderLightbox(); }
+  document.addEventListener('keydown', function(e){
+    const lb = document.getElementById('lightbox');
+    if(lb.classList.contains('hidden')) return;
+    if(e.key === 'Escape') closeLightbox();
+    if(e.key === 'ArrowRight') nextMedia();
+    if(e.key === 'ArrowLeft') prevMedia();
+  });
+
+  function copyAIInstructions(btn){
+    try{
+      const container = btn.closest('details');
+      const list = container ? container.querySelector('ol') : null;
+      if(!list) return;
+      const text = Array.from(list.querySelectorAll('li')).map(li=>`- ${li.textContent.trim()}`).join('\n');
+      navigator.clipboard.writeText(text);
+    }catch(e){ /* noop */ }
+  }
+  // Ensure progress bars render in new row layout too
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.progress-bar[data-progress]').forEach(el => {
+      const p = parseInt(el.getAttribute('data-progress'), 10);
+      if(!isNaN(p)) el.style.width = Math.max(0, Math.min(100, p)) + '%';
+    });
+  });
+</script>
 {% endblock %}

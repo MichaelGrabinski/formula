@@ -422,6 +422,29 @@ class PersonalProject(models.Model):
         return self.name
 
 
+class PersonalProjectMedia(models.Model):
+    project = models.ForeignKey(PersonalProject, on_delete=models.CASCADE, related_name="media")
+    file = models.FileField(upload_to="personal_project_media/", blank=True, null=True)
+    url = models.URLField(blank=True, null=True)
+    caption = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.caption or (self.file.name if self.file else self.url or "media")
+
+    @property
+    def media_type(self):
+        name = (self.file.name if self.file else self.url or "").lower()
+        if name.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+            return "image"
+        if name.endswith((".mp4", ".mov", ".webm", ".m4v")):
+            return "video"
+        return "other"
+
+
 class PersonalRepair(models.Model):
     PRIORITY_CHOICES = (("LOW", "Low"), ("MEDIUM", "Medium"), ("HIGH", "High"))
     STATUS_CHOICES = (
@@ -483,7 +506,13 @@ class PersonalTask(models.Model):
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="TODO")
     priority = models.CharField(max_length=16, choices=PRIORITY_CHOICES, blank=True, null=True)
     assigned_to = models.CharField(max_length=255, blank=True, null=True)
+    # New fields for planning and visualization
+    section = models.CharField(max_length=255, blank=True, null=True)
+    start_date = models.DateField(blank=True, null=True)
     due_date = models.DateField(blank=True, null=True)
+    progress = models.PositiveIntegerField(default=0)
+    ai_suggested = models.BooleanField(default=False)
+    ai_details = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
