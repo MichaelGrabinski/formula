@@ -1,7 +1,7 @@
 import json
 import random
 from functools import lru_cache
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 import csv
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -1352,6 +1352,96 @@ class PersonalProjectsView(PersonalBaseView):
     template_name = 'projects.html'
 
     def get(self, request, *args, **kwargs):
+        # Export tasks as JSON (project-scoped or all)
+        if request.GET.get('export') == 'tasks_json':
+            pid = request.GET.get('project')
+            data = []
+            qs = PersonalTask.objects.all().select_related('project')
+            if pid:
+                qs = qs.filter(project_id=pid)
+            for t in qs.order_by('project_id', 'start_date', 'due_date', 'id'):
+                data.append({
+                    'id': t.id,
+                    'project_id': t.project_id,
+                    'project': t.project.name if t.project_id else None,
+                    'title': t.title,
+                    'description': t.description,
+                    'status': t.status,
+                    'priority': t.priority,
+                    'assigned_to': t.assigned_to,
+                    'section': t.section,
+                    'start_date': t.start_date.isoformat() if t.start_date else None,
+                    'due_date': t.due_date.isoformat() if t.due_date else None,
+                    'progress': t.progress,
+                    'ai_suggested': t.ai_suggested,
+                    'ai_details': t.ai_details,
+                    'created_at': t.created_at.isoformat() if t.created_at else None,
+                })
+            proj_details = None
+            if pid:
+                p = PersonalProject.objects.filter(pk=pid).first()
+                if p:
+                    proj_details = {
+                        'id': p.id,
+                        'name': p.name,
+                        'description': p.description,
+                        'status': p.status,
+                        'assigned_to': p.assigned_to,
+                        'budget': float(p.budget) if getattr(p, 'budget', None) is not None else None,
+                        'start_date': p.start_date.isoformat() if p.start_date else None,
+                        'end_date': p.end_date.isoformat() if p.end_date else None,
+                        'created_at': p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
+                    }
+            return JsonResponse({'tasks': data, 'project': pid, 'project_details': proj_details}, json_dumps_params={'indent': 2})
+
+        # New: export projects with nested tasks as JSON
+        if request.GET.get('export') == 'projects_json':
+            pid = request.GET.get('project')
+            projects_qs = PersonalProject.objects.all()
+            if pid:
+                projects_qs = projects_qs.filter(pk=pid)
+            projects = []
+            for p in projects_qs:
+                tasks = []
+                for t in p.tasks.all().order_by('start_date', 'due_date', 'id'):
+                    tasks.append({
+                        'id': t.id,
+                        'title': t.title,
+                        'description': t.description,
+                        'status': t.status,
+                        'priority': t.priority,
+                        'assigned_to': t.assigned_to,
+                        'section': t.section,
+                        'start_date': t.start_date.isoformat() if t.start_date else None,
+                        'due_date': t.due_date.isoformat() if t.due_date else None,
+                        'progress': t.progress,
+                        'ai_suggested': t.ai_suggested,
+                        'ai_details': t.ai_details,
+                        'created_at': t.created_at.isoformat() if t.created_at else None,
+                    })
+                projects.append({
+                    'id': p.id,
+                    'name': p.name,
+                    'description': p.description,
+                    'status': p.status,
+                    'assigned_to': p.assigned_to,
+                    'budget': float(p.budget) if getattr(p, 'budget', None) is not None else None,
+                    'start_date': p.start_date.isoformat() if p.start_date else None,
+                    'end_date': p.end_date.isoformat() if p.end_date else None,
+                    'created_at': p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
+                    'tasks': tasks,
+                })
+            return JsonResponse({'projects': projects}, json_dumps_params={'indent': 2})
+
+        # New: provide a CSV template for importing tasks
+        if request.GET.get('export') == 'tasks_csv_template':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="tasks_template.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['title', 'description', 'section', 'status', 'priority', 'assigned_to', 'start_date', 'due_date', 'progress'])
+            writer.writerow(['Example task', 'Short note', 'Kitchen', 'TODO', 'MEDIUM', 'Alex', '2025-08-11', '2025-08-15', '0'])
+            return response
+
         q = request.GET.get('search', '').strip()
         status = request.GET.get('status', '').strip()
         qs = PersonalProject.objects.all().order_by('-created_at')
@@ -1374,21 +1464,53 @@ class PersonalProjectsView(PersonalBaseView):
         return self.render_to_response(ctx)
 
     def post(self, request, *args, **kwargs):
-        if request.POST.get('action') == 'add_task':
+        action = request.POST.get('action')
+        if action == 'add_task':
+            pid = request.POST.get('project')
+            project = get_object_or_404(PersonalProject, pk=pid)
             form = TaskForm(request.POST)
             task = None
             if form.is_valid():
-                task = form.save()
-                # Optional: enrich with AI immediately if requested
-                enrich_flag = request.POST.get('enrich_on_add') in ('on', 'true', '1')
-                if enrich_flag and task:
+                task = form.save(commit=False)
+                if not getattr(task, 'project_id', None):
+                    task.project = project
+                task.save()
+            else:
+                # Fallback manual create for robustness
+                title = (request.POST.get('title') or '').strip()
+                if title:
+                    t = PersonalTask(
+                        project=project,
+                        title=title,
+                        description=(request.POST.get('description') or '').strip() or None,
+                        section=(request.POST.get('section') or '').strip() or None,
+                        status=(request.POST.get('status') or 'TODO').strip() or 'TODO',
+                        priority=(request.POST.get('priority') or '').strip() or None,
+                        assigned_to=(request.POST.get('assigned_to') or '').strip() or None,
+                        progress=int(request.POST.get('progress') or 0),
+                        ai_suggested=bool(request.POST.get('ai_suggested')),
+                    )
+                    sd = (request.POST.get('start_date') or '').strip()
+                    dd = (request.POST.get('due_date') or '').strip()
                     try:
-                        enrich_task_record_with_ai(task)
+                        if sd:
+                            t.start_date = timezone.datetime.fromisoformat(sd).date()
+                        if dd:
+                            t.due_date = timezone.datetime.fromisoformat(dd).date()
                     except Exception:
                         pass
-            pid = request.POST.get('project')
-            return redirect(f"{reverse_lazy('projects')}?project={pid}")
-        if request.POST.get('action') == 'upload_media':
+                    t.save()
+                    task = t
+            # Optional enrich
+            enrich_flag = request.POST.get('enrich_on_add') in ('on', 'true', '1')
+            if enrich_flag and task:
+                try:
+                    enrich_task_record_with_ai(task)
+                except Exception:
+                    pass
+            return redirect(f"{reverse_lazy('projects')}?project={project.id}")
+
+        if action == 'upload_media':
             pid = request.POST.get('project')
             project = get_object_or_404(PersonalProject, pk=pid)
             from .models import PersonalProjectMedia
@@ -1403,6 +1525,95 @@ class PersonalProjectsView(PersonalBaseView):
                 return redirect(f"{reverse_lazy('projects')}?project={pid}")
             m.save()
             return redirect(f"{reverse_lazy('projects')}?project={pid}")
+
+        if action == 'import_tasks_csv':
+            pid = request.POST.get('project')
+            project = get_object_or_404(PersonalProject, pk=pid)
+            f = request.FILES.get('file')
+            if not f:
+                return redirect(f"{reverse_lazy('projects')}?project={pid}")
+            import io
+            try:
+                text = f.read().decode('utf-8', errors='ignore')
+            except Exception:
+                text = f.read().decode('latin-1', errors='ignore')
+            reader = csv.DictReader(io.StringIO(text))
+            for row in reader:
+                title = (row.get('title') or row.get('Task') or '').strip()
+                if not title:
+                    continue
+                t = PersonalTask(project=project, title=title)
+                t.description = (row.get('description') or row.get('Description') or '').strip() or None
+                t.section = (row.get('section') or '').strip() or None
+                st = (row.get('status') or '').strip().upper()
+                if st not in ('TODO','IN_PROGRESS','DONE'):
+                    st = 'TODO'
+                t.status = st
+                pr = (row.get('priority') or '').strip().upper()
+                t.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
+                t.assigned_to = (row.get('assigned_to') or '').strip() or None
+                try:
+                    t.progress = int(row.get('progress') or 0)
+                except Exception:
+                    t.progress = 0
+                sd = (row.get('start_date') or row.get('start') or '').strip()
+                dd = (row.get('due_date') or row.get('end') or '').strip()
+                try:
+                    if sd:
+                        t.start_date = timezone.datetime.fromisoformat(sd).date()
+                    if dd:
+                        t.due_date = timezone.datetime.fromisoformat(dd).date()
+                except Exception:
+                    pass
+                t.save()
+            return redirect(f"{reverse_lazy('projects')}?project={pid}")
+
+        if action == 'import_tasks_json':
+            pid = request.POST.get('project')
+            project = get_object_or_404(PersonalProject, pk=pid)
+            f = request.FILES.get('file')
+            if not f:
+                return redirect(f"{reverse_lazy('projects')}?project={pid}")
+            import io
+            text = f.read().decode('utf-8', errors='ignore')
+            try:
+                items = json.loads(text)
+            except Exception:
+                items = []
+            if isinstance(items, dict):
+                items = items.get('tasks') or []
+            for row in items if isinstance(items, list) else []:
+                title = (row.get('title') or '').strip()
+                if not title:
+                    continue
+                t = PersonalTask(project=project, title=title)
+                t.description = (row.get('description') or '').strip() or None
+                t.section = (row.get('section') or '').strip() or None
+                st = (row.get('status') or '').strip().upper()
+                if st not in ('TODO','IN_PROGRESS','DONE'):
+                    st = 'TODO'
+                t.status = st
+                pr = (row.get('priority') or '').strip().upper()
+                t.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
+                t.assigned_to = (row.get('assigned_to') or '').strip() or None
+                try:
+                    t.progress = int(row.get('progress') or 0)
+                except Exception:
+                    t.progress = 0
+                sd = row.get('start_date') or row.get('start')
+                dd = row.get('due_date') or row.get('end')
+                from datetime import datetime as _dt
+                try:
+                    if sd:
+                        t.start_date = _dt.fromisoformat(sd).date()
+                    if dd:
+                        t.due_date = _dt.fromisoformat(dd).date()
+                except Exception:
+                    pass
+                t.save()
+            return redirect(f"{reverse_lazy('projects')}?project={pid}")
+
+        # default: add or edit project
         form = ProjectForm(request.POST)
         if form.is_valid():
             form.save()

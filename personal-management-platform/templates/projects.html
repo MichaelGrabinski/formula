@@ -48,10 +48,47 @@
           <div id="project-{{ project.id }}" class="hidden p-4 space-y-6" data-events='[
             {% for t in project.tasks.all %}
               {% if t.start_date or t.due_date %}
-                {"title":"{{ t.title|escapejs }}","start":"{{ t.start_date|date:"Y-m-d" }}","end":"{{ t.due_date|date:"Y-m-d" }}" }{% if not forloop.last %},{% endif %}
+                {"title":"{{ t.title|escapejs }}","start":"{{ t.start_date|date:"Y-m-d" }}","end":"{{ t.due_date|date:"Y-m-d" }}",
+                 "backgroundColor":"{% if t.status == 'IN_PROGRESS' %}#3b82f6{% elif t.status == 'DONE' %}#10b981{% else %}#f59e0b{% endif %}",
+                 "borderColor":"{% if t.status == 'IN_PROGRESS' %}#3b82f6{% elif t.status == 'DONE' %}#10b981{% else %}#f59e0b{% endif %}",
+                 "textColor":"#111827" }{% if not forloop.last %},{% endif %}
               {% endif %}
             {% endfor %}
           ]'>
+            <div class="flex items-center justify-between text-xs">
+              <div>
+                {% if project.status == 'IN_PROGRESS' %}
+                  <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800">In Progress</span>
+                {% elif project.status == 'COMPLETED' %}
+                  <span class="px-2 py-0.5 rounded bg-green-100 text-green-800">Completed</span>
+                {% elif project.status == 'ON_HOLD' %}
+                  <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800">On Hold</span>
+                {% else %}
+                  <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800">Planned</span>
+                {% endif %}
+                {% if project.budget %}<span class="ml-2 text-muted-foreground">Budget: ${{ project.budget }}</span>{% endif %}
+              </div>
+              <div class="flex items-center gap-2">
+                <a href="{% url 'edit_project' project.id %}" class="px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/80">Edit Project</a>
+                <a href="{% url 'delete_project' project.id %}" class="px-2 py-1 rounded bg-destructive text-destructive-foreground hover:bg-destructive/80" onclick="return confirm('Delete this project?')">Delete</a>
+              </div>
+            </div>
+
+            {% if edit_task and selected_project and selected_project.id == project.id and task_form %}
+            <div class="border border-border rounded p-4 bg-muted/20">
+              <h4 class="font-semibold mb-2">Edit Task</h4>
+              <form method="post" action="{% url 'edit_task' task_form.instance.id %}?project={{ project.id }}" class="space-y-2">
+                {% csrf_token %}
+                {{ task_form.as_p }}
+                <div class="flex gap-2">
+                  <button type="submit" class="px-3 py-2 bg-primary text-primary-foreground rounded">Save</button>
+                  <a class="px-3 py-2 border rounded" href="{% url 'projects' %}?project={{ project.id }}">Cancel</a>
+                </div>
+              </form>
+            </div>
+            {% endif %}
+
+            <!-- Restored Details + Quick Add + Import/Export -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <h4 class="font-semibold mb-2">Details</h4>
@@ -60,6 +97,25 @@
                   <li>Budget: {% if project.budget %}${{ project.budget }}{% else %}-{% endif %}</li>
                   <li>Dates: {% if project.start_date %}{{ project.start_date }}{% else %}—{% endif %} → {% if project.end_date %}{{ project.end_date }}{% else %}—{% endif %}</li>
                 </ul>
+                <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                  <a class="px-2 py-1 border rounded" href="{% url 'projects' %}?export=tasks_json&project={{ project.id }}">Export Tasks JSON</a>
+                  <a class="px-2 py-1 border rounded" href="{% url 'projects' %}?export=projects_json&project={{ project.id }}">Export Project JSON</a>
+                  <a class="px-2 py-1 border rounded" href="{% url 'projects' %}?export=tasks_csv_template">Download CSV template</a>
+                  <form method="post" enctype="multipart/form-data" class="inline-flex items-center gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="import_tasks_csv" />
+                    <input type="hidden" name="project" value="{{ project.id }}" />
+                    <input type="file" name="file" accept=".csv" class="text-xs" />
+                    <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" type="submit">Import CSV</button>
+                  </form>
+                  <form method="post" enctype="multipart/form-data" class="inline-flex items-center gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="import_tasks_json" />
+                    <input type="hidden" name="project" value="{{ project.id }}" />
+                    <input type="file" name="file" accept=".json,application/json" class="text-xs" />
+                    <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" type="submit">Import JSON</button>
+                  </form>
+                </div>
               </div>
               <div>
                 <h4 class="font-semibold mb-2">Quick Add Task</h4>
@@ -100,285 +156,145 @@
               </div>
             </div>
 
-            <!-- Tasks: stacked sections with horizontal rows -->
-            <div class="space-y-6">
+            <!-- Jump links -->
+            <div class="mt-4 text-xs text-muted-foreground flex flex-wrap gap-3">
+              <a href="#tasks-{{ project.id }}" class="underline hover:no-underline">Jump to Tasks</a>
+              <a href="#cal-{{ project.id }}" class="underline hover:no-underline">Jump to Calendar</a>
+              <a href="#gchart-{{ project.id }}" class="underline hover:no-underline">Jump to Gantt</a>
+              <a href="#media-{{ project.id }}" class="underline hover:no-underline">Jump to Media</a>
+            </div>
+
+            <!-- Tasks (moved above Calendar/Gantt/Media) -->
+            <div id="tasks-{{ project.id }}" class="space-y-6 mt-4">
               <h4 class="font-semibold">Tasks</h4>
-
-              <!-- To Do Row -->
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  <h5 class="text-sm font-medium">To Do</h5>
-                  <span class="text-xs text-muted-foreground">{{ project.tasks.all|length }} total</span>
-                </div>
-                <div class="flex gap-4 overflow-x-auto sm:flex-wrap sm:overflow-x-visible pb-1">
-                  {% for t in project.tasks.all %}
-                    {% if t.status == 'TODO' %}
-                      <div class="min-w-[380px] sm:min-w-[440px] lg:min-w-[520px] w-[90vw] sm:w-auto border border-border rounded p-4 bg-card text-card-foreground min-h-[200px]">
-                        <div class="flex items-start justify-between gap-3">
-                          <div class="font-medium text-base truncate" title="{{ t.title }}">{{ t.title }}</div>
-                          <div class="flex items-center gap-2 text-xs">
-                            {% if t.priority %}<span class="px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ t.priority }}</span>{% endif %}
-                            {% if t.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
-                          </div>
-                        </div>
-                        {% if t.assigned_to %}<div class="mt-1 text-xs text-muted-foreground">Assigned: {{ t.assigned_to }}</div>{% endif %}
-                        {% if t.section %}<div class="text-xs text-muted-foreground">Section: {{ t.section }}</div>{% endif %}
-                        {% if t.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ t.description }}</div>{% endif %}
-                        {% if t.start_date or t.due_date %}
-                          <div class="mt-2 text-xs text-muted-foreground flex items-center gap-2">
-                            <span>{{ t.start_date|default:"?" }} → {{ t.due_date|default:"?" }}</span>
-                            {% if t.due_date and t.due_date < today %}
-                              <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">Overdue</span>
-                            {% elif t.due_date and t.due_date <= today_plus_3 %}
-                              <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700">Due soon</span>
-                            {% endif %}
-                          </div>
-                        {% endif %}
-                        {% if t.ai_details %}
-                          <div class="mt-3 border-t border-border pt-2">
-                            {% if t.ai_details.duration_estimate %}<div class="text-xs mb-1"><strong>Duration:</strong> {{ t.ai_details.duration_estimate }}</div>{% endif %}
-                            {% if t.ai_details.tools %}
-                              <div class="text-xs mb-1"><strong>Tools:</strong>
-                                <span class="inline-flex flex-wrap gap-1">
-                                  {% for tool in t.ai_details.tools %}<span class="px-2 py-0.5 bg-muted rounded">{{ tool }}</span>{% endfor %}
-                                </span>
-                              </div>
-                            {% endif %}
-                            {% if t.ai_details.materials %}
-                              <div class="text-xs mb-1"><strong>Materials:</strong>
-                                <span class="inline-flex flex-wrap gap-1">
-                                  {% for m in t.ai_details.materials %}<span class="px-2 py-0.5 bg-muted rounded">{{ m }}</span>{% endfor %}
-                                </span>
-                              </div>
-                            {% endif %}
-                            {% if t.ai_details.estimated_cost %}<div class="text-xs mb-1"><strong>Est. Cost:</strong> {{ t.ai_details.estimated_cost }}</div>{% endif %}
-                            {% if t.ai_details.tips %}
-                              <details class="text-xs">
-                                <summary class="cursor-pointer">AI Tips</summary>
-                                <ul class="list-disc ml-5 mt-1">
-                                  {% for tip in t.ai_details.tips %}<li>{{ tip }}</li>{% endfor %}
-                                </ul>
-                              </details>
-                            {% endif %}
-                            {% if t.ai_details.safety %}
-                              <details class="text-xs mt-1">
-                                <summary class="cursor-pointer">Safety notes</summary>
-                                <ul class="list-disc ml-5 mt-1">
-                                  {% for s in t.ai_details.safety %}<li>{{ s }}</li>{% endfor %}
-                                </ul>
-                              </details>
-                            {% endif %}
-                            {% if t.ai_details.instructions %}
-                              <details class="text-xs mt-1">
-                                <summary class="cursor-pointer">AI Instructions</summary>
-                                <ol class="list-decimal ml-5 mt-1">
-                                  {% for s in t.ai_details.instructions %}<li>{{ s }}</li>{% endfor %}
-                                </ol>
-                                <button type="button" class="mt-2 text-blue-600 hover:underline" onclick="copyAIInstructions(this)">Copy instructions</button>
-                              </details>
-                            {% endif %}
-                          </div>
-                        {% endif %}
-                        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                          <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
-                          <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
-                          <form method="post" action="{% url 'enrich_task' t.id %}" class="inline">
-                            {% csrf_token %}
-                            <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
-                          </form>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- To Do -->
+                <div>
+                  <h5 class="text-sm font-medium mb-2">To Do</h5>
+                  {% for task in project.tasks.all %}
+                    {% if task.status == 'TODO' %}
+                    <div class="border border-border rounded p-4 min-h-[160px] bg-amber-50 text-amber-900">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="font-medium text-base truncate" title="{{ task.title }}">{{ task.title }}</div>
+                        <div class="flex items-center gap-2 text-xs">
+                          <span class="px-2 py-0.5 rounded" style="background:rgba(255,255,255,0.6);border:1px solid rgba(0,0,0,0.08);">TODO</span>
+                          {% if task.priority %}<span class="px-2 py-0.5 rounded bg-white/60 border">{{ task.priority }}</span>{% endif %}
+                          {% if task.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
                         </div>
                       </div>
+                      {% if task.assigned_to %}<div class="mt-1 text-xs opacity-80">Assigned: {{ task.assigned_to }}</div>{% endif %}
+                      {% if task.section %}<div class="text-xs opacity-80">Section: {{ task.section }}</div>{% endif %}
+                      {% if task.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ task.description }}</div>{% endif %}
+                      {% if task.start_date or task.due_date %}
+                        <div class="mt-2 text-xs opacity-80">{{ task.start_date|default:'?' }} → {{ task.due_date|default:'?' }}</div>
+                      {% endif %}
+                      <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' task.id %}?project={{ project.id }}">Edit</a>
+                        <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' task.id %}" onclick="return confirm('Delete this task?');">Delete</a>
+                        <form method="post" action="{% url 'enrich_task' task.id %}" class="inline">
+                          {% csrf_token %}
+                          <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
+                        </form>
+                      </div>
+                    </div>
                     {% endif %}
                   {% endfor %}
                 </div>
-              </div>
 
-              <!-- In Progress Row -->
-              <div>
-                <h5 class="text-sm font-medium mb-2">In Progress</h5>
-                <div class="flex gap-4 overflow-x-auto sm:flex-wrap sm:overflow-x-visible pb-1">
-                  {% for t in project.tasks.all %}
-                    {% if t.status == 'IN_PROGRESS' %}
-                      <div class="min-w-[380px] sm:min-w-[440px] lg:min-w-[520px] w-[90vw] sm:w-auto border border-border rounded p-4 bg-card text-card-foreground min-h-[220px]">
-                        <div class="flex items-start justify-between gap-3">
-                          <div class="font-medium text-base truncate" title="{{ t.title }}">{{ t.title }}</div>
-                          <div class="flex items-center gap-2 text-xs">
-                            {% if t.priority %}<span class="px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ t.priority }}</span>{% endif %}
-                            {% if t.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
-                          </div>
-                        </div>
-                        {% if t.assigned_to %}<div class="mt-1 text-xs text-muted-foreground">Assigned: {{ t.assigned_to }}</div>{% endif %}
-                        {% if t.section %}<div class="text-xs text-muted-foreground">Section: {{ t.section }}</div>{% endif %}
-                        {% if t.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ t.description }}</div>{% endif %}
-                        {% if t.start_date or t.due_date %}
-                          <div class="mt-2 text-xs text-muted-foreground flex items-center gap-2">
-                            <span>{{ t.start_date|default:"?" }} → {{ t.due_date|default:"?" }}</span>
-                            {% if t.due_date and t.due_date < today %}
-                              <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">Overdue</span>
-                            {% elif t.due_date and t.due_date <= today_plus_3 %}
-                              <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700">Due soon</span>
-                            {% endif %}
-                          </div>
-                        {% endif %}
-                        <div class="mt-3">
-                          <div class="h-3 bg-muted rounded">
-                            <div class="h-3 bg-primary rounded progress-bar" data-progress="{{ t.progress|default_if_none:0 }}" style="width: 0%"></div>
-                          </div>
-                          <div class="mt-1 text-xs text-muted-foreground">{{ t.progress|default_if_none:0 }}%</div>
-                        </div>
-                        {% if t.ai_details %}
-                          <div class="mt-3 border-t border-border pt-2">
-                            {% if t.ai_details.duration_estimate %}<div class="text-xs mb-1"><strong>Duration:</strong> {{ t.ai_details.duration_estimate }}</div>{% endif %}
-                            {% if t.ai_details.tools %}
-                              <div class="text-xs mb-1"><strong>Tools:</strong>
-                                <span class="inline-flex flex-wrap gap-1">
-                                  {% for tool in t.ai_details.tools %}<span class="px-2 py-0.5 bg-muted rounded">{{ tool }}</span>{% endfor %}
-                                </span>
-                              </div>
-                            {% endif %}
-                            {% if t.ai_details.materials %}
-                              <div class="text-xs mb-1"><strong>Materials:</strong>
-                                <span class="inline-flex flex-wrap gap-1">
-                                  {% for m in t.ai_details.materials %}<span class="px-2 py-0.5 bg-muted rounded">{{ m }}</span>{% endfor %}
-                                </span>
-                              </div>
-                            {% endif %}
-                            {% if t.ai_details.estimated_cost %}<div class="text-xs mb-1"><strong>Est. Cost:</strong> {{ t.ai_details.estimated_cost }}</div>{% endif %}
-                            {% if t.ai_details.tips %}
-                              <details class="text-xs">
-                                <summary class="cursor-pointer">AI Tips</summary>
-                                <ul class="list-disc ml-5 mt-1">
-                                  {% for tip in t.ai_details.tips %}<li>{{ tip }}</li>{% endfor %}
-                                </ul>
-                              </details>
-                            {% endif %}
-                            {% if t.ai_details.safety %}
-                              <details class="text-xs mt-1">
-                                <summary class="cursor-pointer">Safety notes</summary>
-                                <ul class="list-disc ml-5 mt-1">
-                                  {% for s in t.ai_details.safety %}<li>{{ s }}</li>{% endfor %}
-                                </ul>
-                              </details>
-                            {% endif %}
-                            {% if t.ai_details.instructions %}
-                              <details class="text-xs mt-1">
-                                <summary class="cursor-pointer">AI Instructions</summary>
-                                <ol class="list-decimal ml-5 mt-1">
-                                  {% for s in t.ai_details.instructions %}<li>{{ s }}</li>{% endfor %}
-                                </ol>
-                                <button type="button" class="mt-2 text-blue-600 hover:underline" onclick="copyAIInstructions(this)">Copy instructions</button>
-                              </details>
-                            {% endif %}
-                          </div>
-                        {% endif %}
-                        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                          <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
-                          <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
-                          <form method="post" action="{% url 'enrich_task' t.id %}" class="inline">
-                            {% csrf_token %}
-                            <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
-                          </form>
+                <!-- In Progress -->
+                <div>
+                  <h5 class="text-sm font-medium mb-2">In Progress</h5>
+                  {% for task in project.tasks.all %}
+                    {% if task.status == 'IN_PROGRESS' %}
+                    <div class="border border-border rounded p-4 min-h-[160px] bg-blue-50 text-blue-900">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="font-medium text-base truncate" title="{{ task.title }}">{{ task.title }}</div>
+                        <div class="flex items-center gap-2 text-xs">
+                          <span class="px-2 py-0.5 rounded" style="background:rgba(255,255,255,0.6);border:1px solid rgba(0,0,0,0.08);">In Progress</span>
+                          {% if task.priority %}<span class="px-2 py-0.5 rounded bg-white/60 border">{{ task.priority }}</span>{% endif %}
+                          {% if task.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
                         </div>
                       </div>
+                      {% if task.assigned_to %}<div class="mt-1 text-xs opacity-80">Assigned: {{ task.assigned_to }}</div>{% endif %}
+                      {% if task.section %}<div class="text-xs opacity-80">Section: {{ task.section }}</div>{% endif %}
+                      {% if task.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ task.description }}</div>{% endif %}
+                      {% if task.start_date or task.due_date %}
+                        <div class="mt-2 text-xs opacity-80">{{ task.start_date|default:'?' }} → {{ task.due_date|default:'?' }}</div>
+                      {% endif %}
+                      <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' task.id %}?project={{ project.id }}">Edit</a>
+                        <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' task.id %}" onclick="return confirm('Delete this task?');">Delete</a>
+                        <form method="post" action="{% url 'enrich_task' task.id %}" class="inline">
+                          {% csrf_token %}
+                          <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
+                        </form>
+                      </div>
+                    </div>
                     {% endif %}
                   {% endfor %}
                 </div>
-              </div>
 
-              <!-- Done Row -->
-              <div>
-                <h5 class="text-sm font-medium mb-2">Done</h5>
-                <div class="flex gap-4 overflow-x-auto sm:flex-wrap sm:overflow-x-visible pb-1">
-                  {% for t in project.tasks.all %}
-                    {% if t.status == 'DONE' %}
-                      <div class="min-w-[380px] sm:min-w-[440px] lg:min-w-[520px] w-[90vw] sm:w-auto border border-border rounded p-4 bg-card text-card-foreground min-h-[200px]">
-                        <div class="flex items-start justify-between gap-3">
-                          <div class="font-medium text-base truncate" title="{{ t.title }}">{{ t.title }}</div>
-                          <div class="flex items-center gap-2 text-xs">
-                            {% if t.priority %}<span class="px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ t.priority }}</span>{% endif %}
-                            {% if t.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
-                          </div>
-                        </div>
-                        {% if t.assigned_to %}<div class="mt-1 text-xs text-muted-foreground">Assigned: {{ t.assigned_to }}</div>{% endif %}
-                        {% if t.section %}<div class="text-xs text-muted-foreground">Section: {{ t.section }}</div>{% endif %}
-                        {% if t.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ t.description }}</div>{% endif %}
-                        {% if t.start_date or t.due_date %}
-                          <div class="mt-2 text-xs text-muted-foreground flex items-center gap-2">
-                            <span>{{ t.start_date|default:"?" }} → {{ t.due_date|default:"?" }}</span>
-                            {% if t.due_date and t.due_date < today %}
-                              <span class="px-2 py-0.5 rounded bg-red-100 text-red-700">Overdue</span>
-                            {% elif t.due_date and t.due_date <= today_plus_3 %}
-                              <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700">Due soon</span>
-                            {% endif %}
-                          </div>
-                        {% endif %}
-                        {% if t.ai_details %}
-                          <div class="mt-3 border-t border-border pt-2">
-                            {% if t.ai_details.duration_estimate %}<div class="text-xs mb-1"><strong>Duration:</strong> {{ t.ai_details.duration_estimate }}</div>{% endif %}
-                            {% if t.ai_details.estimated_cost %}<div class="text-xs mb-1"><strong>Est. Cost:</strong> {{ t.ai_details.estimated_cost }}</div>{% endif %}
-                            {% if t.ai_details.tools %}
-                              <div class="text-xs mb-1"><strong>Tools:</strong>
-                                <span class="inline-flex flex-wrap gap-1">
-                                  {% for tool in t.ai_details.tools %}<span class="px-2 py-0.5 bg-muted rounded">{{ tool }}</span>{% endfor %}
-                                </span>
-                              </div>
-                            {% endif %}
-                            {% if t.ai_details.materials %}
-                              <div class="text-xs mb-1"><strong>Materials:</strong>
-                                <span class="inline-flex flex-wrap gap-1">
-                                  {% for m in t.ai_details.materials %}<span class="px-2 py-0.5 bg-muted rounded">{{ m }}</span>{% endfor %}
-                                </span>
-                              </div>
-                            {% endif %}
-                            {% if t.ai_details.safety %}
-                              <details class="text-xs">
-                                <summary class="cursor-pointer">Safety notes</summary>
-                                <ul class="list-disc ml-5 mt-1">
-                                  {% for s in t.ai_details.safety %}<li>{{ s }}</li>{% endfor %}
-                                </ul>
-                              </details>
-                            {% endif %}
-                          </div>
-                        {% endif %}
-                        <div class="mt-3 text-xs text-muted-foreground">Progress: {{ t.progress|default_if_none:100 }}%</div>
-                        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                          <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' t.id %}">Edit</a>
-                          <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' t.id %}" onclick="return confirm('Delete this task?');">Delete</a>
-                          <form method="post" action="{% url 'enrich_task' t.id %}" class="inline">
-                            {% csrf_token %}
-                            <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
-                          </form>
+                <!-- Done -->
+                <div>
+                  <h5 class="text-sm font-medium mb-2">Done</h5>
+                  {% for task in project.tasks.all %}
+                    {% if task.status == 'DONE' %}
+                    <div class="border border-border rounded p-4 min-h-[160px] bg-green-50 text-green-900">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="font-medium text-base truncate" title="{{ task.title }}">{{ task.title }}</div>
+                        <div class="flex items-center gap-2 text-xs">
+                          <span class="px-2 py-0.5 rounded" style="background:rgba(255,255,255,0.6);border:1px solid rgba(0,0,0,0.08);">Done</span>
+                          {% if task.priority %}<span class="px-2 py-0.5 rounded bg-white/60 border">{{ task.priority }}</span>{% endif %}
+                          {% if task.ai_suggested %}<span class="px-2 py-0.5 rounded bg-green-100 text-green-700">AI</span>{% endif %}
                         </div>
                       </div>
+                      {% if task.assigned_to %}<div class="mt-1 text-xs opacity-80">Assigned: {{ task.assigned_to }}</div>{% endif %}
+                      {% if task.section %}<div class="text-xs opacity-80">Section: {{ task.section }}</div>{% endif %}
+                      {% if task.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ task.description }}</div>{% endif %}
+                      {% if task.start_date or task.due_date %}
+                        <div class="mt-2 text-xs opacity-80">{{ task.start_date|default:'?' }} → {{ task.due_date|default:'?' }}</div>
+                      {% endif %}
+                      <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' task.id %}?project={{ project.id }}">Edit</a>
+                        <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' task.id %}" onclick="return confirm('Delete this task?');">Delete</a>
+                        <form method="post" action="{% url 'enrich_task' task.id %}" class="inline">
+                          {% csrf_token %}
+                          <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" title="Enrich with AI" type="submit">Enrich</button>
+                        </form>
+                      </div>
+                    </div>
                     {% endif %}
                   {% endfor %}
                 </div>
               </div>
             </div>
 
-            <!-- Calendar (FullCalendar via CDN) -->
-            <div>
+            <!-- Calendar (FullCalendar) -->
+            <div id="calendar-section-{{ project.id }}">
               <h4 class="font-semibold mb-2">Calendar</h4>
               <div id="cal-{{ project.id }}" class="border border-border rounded h-[320px] md:h-[380px] lg:h-[420px]"></div>
             </div>
 
-            <!-- Simple Gantt chart -->
-            <div>
-              <h4 class="font-semibold mb-2">Gantt</h4>
-              <div class="space-y-2">
+            <!-- Gantt (jsgantt-improved) -->
+            <div id="gantt-section-{{ project.id }}">
+              <h4 class="font-semibold mb-2">Gantt <span class="text-xs text-muted-foreground">({{ project.tasks.count }} tasks)</span></h4>
+              <div id="gchart-{{ project.id }}" class="border border-border rounded overflow-auto"
+                   data-proj-start="{% if project.start_date %}{{ project.start_date|date:"Y-m-d" }}{% endif %}"
+                   data-proj-end="{% if project.end_date %}{{ project.end_date|date:"Y-m-d" }}{% endif %}"
+                   data-gantt='[
                 {% for t in project.tasks.all %}
-                  {% if t.start_date and t.due_date %}
-                    <div class="text-xs">{{ t.title }}</div>
-                    <div class="h-3 bg-muted rounded relative overflow-hidden">
-                      <div class="absolute left-0 top-0 h-3 bg-primary" data-start="{{ t.start_date|date:'U' }}" data-end="{{ t.due_date|date:'U' }}"></div>
-                    </div>
-                  {% endif %}
+                  {"id":"{{ t.id }}","name":"{{ t.title|escapejs }}",
+                   "start":"{% if t.start_date %}{{ t.start_date|date:"Y-m-d" }}{% endif %}",
+                   "end":"{% if t.due_date %}{{ t.due_date|date:"Y-m-d" }}{% endif %}",
+                   "status":"{% if t.status == 'IN_PROGRESS' %}IN_PROGRESS{% elif t.status == 'DONE' %}DONE{% else %}TODO{% endif %}",
+                   "progress": {{ t.progress|default_if_none:0 }}
+                  }{% if not forloop.last %},{% endif %}
                 {% endfor %}
-              </div>
+              ]'></div>
             </div>
 
-            <!-- Media Upload & Gallery -->
-            <div>
+            <!-- Project Media Upload & Gallery -->
+            <div id="media-section-{{ project.id }}">
               <h4 class="font-semibold mb-2">Project Media</h4>
               <form method="post" enctype="multipart/form-data" action="{% url 'projects' %}?project={{ project.id }}" class="flex flex-col gap-2 md:flex-row md:items-end">
                 {% csrf_token %}
@@ -479,7 +395,82 @@
 
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsgantt-improved/dist/jsgantt.css" />
+<script src="https://cdn.jsdelivr.net/npm/jsgantt-improved/dist/jsgantt.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script>
+  function renderFrappeGantt(container, tasks, projStart, projEnd){
+    try{
+      if(typeof Gantt === 'undefined'){ container.innerHTML = '<div class="p-3 text-sm text-red-600">Gantt assets blocked. Check your network/CSP.</div>'; return false; }
+      // Map tasks into Frappe format, with safe date fallbacks
+      const pad = n => (n<10? '0'+n : ''+n);
+      const toYMD = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      const addDays = (ymd, days)=>{
+        const [Y,M,D] = (ymd||'').split('-').map(x=>parseInt(x,10));
+        let dt = (Y && M && D) ? new Date(Y, M-1, D) : new Date();
+        dt.setDate(dt.getDate() + (days||0));
+        return toYMD(dt);
+      };
+      const today = toYMD(new Date());
+      const data = tasks.map((t,i)=>{
+        let s = (t.start||'').trim() || (t.end||'').trim() || (projStart||'').trim() || today;
+        let e = (t.end||'').trim() || (t.start||'').trim() || (projEnd||'').trim() || s;
+        if(e === s){ e = addDays(s, 1); }
+        const cls = (t.status === 'DONE') ? 'bar-green' : ((t.status === 'IN_PROGRESS') ? 'bar-blue' : 'bar-yellow');
+        return { id: t.id || (i+1), name: t.name || ('Task '+(i+1)), start: s, end: e, progress: t.progress || 0, custom_class: cls };
+      });
+      container.innerHTML = ''; // clear
+      new Gantt(container, data, {
+        view_mode: 'Week',
+        date_format: 'YYYY-MM-DD',
+        custom_popup_html: (task) => `<div class="p-2"><div class="font-medium">${task.name}</div><div class="text-xs">${task._start.format('YYYY-MM-DD')} → ${task._end.format('YYYY-MM-DD')}</div><div class="text-xs">${task.progress||0}%</div></div>`
+      });
+      return true;
+    }catch(e){
+      console.error('Frappe Gantt error', e);
+      container.innerHTML = '<div class="p-3 text-sm text-red-600">Unable to render Gantt.</div>';
+      return false;
+    }
+  }
+
+  function renderJSGantt(container){
+    const raw = container.getAttribute('data-gantt') || '[]';
+    console.log('Gantt raw:', raw);
+    let tasks = [];
+    try { tasks = JSON.parse(raw); } catch(e) { console.error('Gantt JSON parse error:', e); tasks = []; }
+    const projStart = container.getAttribute('data-proj-start') || '';
+    const projEnd = container.getAttribute('data-proj-end') || '';
+    console.log('Gantt tasks parsed:', tasks.length, tasks);
+    if(!tasks.length){ container.innerHTML = '<div class="p-3 text-sm text-muted-foreground">No tasks yet.</div>'; return false; }
+    if(typeof JSGantt === 'undefined' || !JSGantt || !JSGantt.GanttChart){
+      console.warn('JSGantt not available, falling back to Frappe Gantt');
+      return renderFrappeGantt(container, tasks, projStart, projEnd);
+    }
+    try{
+      const g = new JSGantt.GanttChart(container, 'week');
+      if(typeof g.setDateInputFormat === 'function'){ g.setDateInputFormat('yyyy-mm-dd'); }
+      g.setOptions({ vFormat: 'week', vChartScale: 'week', vShowRes: 0, vShowComp: 1, vShowDur: 0, vShowStartDate: 1, vShowEndDate: 1, vUseSingleCell: 10000, vToday: new Date() });
+      const pad = n => (n<10? '0'+n : ''+n);
+      const toYMD = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      const addDays = (ymd, days)=>{ const [Y,M,D] = (ymd||'').split('-').map(x=>parseInt(x,10)); let dt = (Y && M && D) ? new Date(Y, M-1, D) : new Date(); dt.setDate(dt.getDate() + (days||0)); return toYMD(dt); };
+      const today = toYMD(new Date());
+      tasks.forEach((t, i) => {
+        const cls = t.status === 'DONE' ? 'gtaskgreen' : (t.status === 'IN_PROGRESS' ? 'gtaskblue' : 'gtaskyellow');
+        let s = (t.start||'').trim() || (t.end||'').trim() || (projStart||'').trim() || today;
+        let e = (t.end||'').trim() || (t.start||'').trim() || (projEnd||'').trim() || s;
+        if(e === s){ e = addDays(s, 1); }
+        g.AddTaskItemObject({ pID: t.id || (i+1), pName: t.name || ('Task '+(i+1)), pStart: s, pEnd: e, pClass: cls, pComp: t.progress || 0, pGroup: 0, pParent: 0, pOpen: 1 });
+      });
+      g.Draw();
+      g.DrawDependencies();
+      return true;
+    }catch(e){
+      console.warn('JSGantt failed, falling back to Frappe Gantt', e);
+      return renderFrappeGantt(container, tasks, projStart, projEnd);
+    }
+  }
+
   function toggleProject(id){
     const wrap = document.getElementById('project-'+id);
     if(!wrap) return;
@@ -488,26 +479,21 @@
     if(calEl && !calEl.dataset.inited){
       let events = [];
       try { events = JSON.parse(wrap.getAttribute('data-events')||'[]'); } catch (e) { events = []; }
-      const cal = new FullCalendar.Calendar(calEl, { initialView: 'dayGridMonth', height: '100%', contentHeight: 'auto', aspectRatio: 1.4, events });
+      const cal = new FullCalendar.Calendar(calEl, { initialView: 'dayGridMonth', height: '100%', contentHeight: 'auto', aspectRatio: 1.4, eventDisplay: 'block', dayMaxEventRows: 3, events });
       cal.render();
       calEl.dataset.inited = '1';
     }
-    // simple Gantt width calc (10px per day)
-    wrap.querySelectorAll('[data-start][data-end]').forEach(el => {
-      const start = parseInt(el.getAttribute('data-start'), 10);
-      const end = parseInt(el.getAttribute('data-end'), 10);
-      if(!isNaN(start) && !isNaN(end) && end > start){
-        const days = Math.ceil((end - start) / 86400);
-        el.style.width = (days * 10) + 'px';
-      }
-    });
-    // set progress bars widths from data-progress
+
+    const gEl = document.getElementById('gchart-'+id);
+    if(gEl && !gEl.dataset.inited){
+      const drawn = renderJSGantt(gEl);
+      if(drawn){ gEl.dataset.inited = '1'; }
+    }
+
+    // progress bars inside cards
     wrap.querySelectorAll('.progress-bar[data-progress]').forEach(el => {
       const p = parseInt(el.getAttribute('data-progress'), 10);
-      if(!isNaN(p)){
-        const clamped = Math.max(0, Math.min(100, p));
-        el.style.width = clamped + '%';
-      }
+      if(!isNaN(p)) el.style.width = Math.max(0, Math.min(100, p)) + '%';
     });
   }
 
@@ -516,7 +502,6 @@
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('project');
     if(pid){
-      // open and scroll into view
       toggleProject(pid);
       const btn = document.querySelector(`button[onclick="toggleProject('${pid}')"]`);
       if(btn){ btn.scrollIntoView({behavior:'smooth', block:'start'}); }
