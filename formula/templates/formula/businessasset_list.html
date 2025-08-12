@@ -17,7 +17,53 @@
     </div>
 
     {% component "unfold/components/card.html" %}
-        {% component "unfold/components/table.html" with table=businessasset_table card_included=1 %}{% endcomponent %}
+        <div class="flex flex-col gap-3">
+            {% for a in object_list %}
+            <div class="border rounded overflow-hidden">
+                <div class="flex flex-col md:flex-row">
+                    <div class="md:w-1/4 bg-muted/30">
+                        {% if a.image %}
+                        <img src="{{ a.image.url }}" alt="{{ a.name }}" class="w-full h-full object-cover" />
+                        {% else %}
+                        <div class="w-full h-full aspect-[4/3] grid place-items-center text-sm text-muted-foreground">No image</div>
+                        {% endif %}
+                    </div>
+                    <div class="flex-1 p-4 grid md:grid-cols-5 gap-3 items-center">
+                        <div class="md:col-span-2">
+                            <div class="text-lg font-medium">{{ a.name }}</div>
+                            {% if a.description %}<div class="text-sm text-muted-foreground mt-1">{{ a.description }}</div>{% endif %}
+                        </div>
+                        <div>
+                            <div class="text-xs text-muted-foreground">Value</div>
+                            <div class="font-medium">${{ a.value }}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-muted-foreground">Purchased</div>
+                            <div class="font-medium">{{ a.purchase_date }}</div>
+                        </div>
+                        {% if a.category %}
+                        <div>
+                            <div class="text-xs text-muted-foreground">Category</div>
+                            <div class="font-medium">{{ a.category }}</div>
+                        </div>
+                        {% endif %}
+                        {% if a.hours or a.miles %}
+                        <div class="md:col-span-2">
+                            <div class="text-xs text-muted-foreground">Usage</div>
+                            <div class="font-medium">{% if a.hours %}{{ a.hours }} hours{% endif %}{% if a.hours and a.miles %} • {% endif %}{% if a.miles %}{{ a.miles }} miles{% endif %}</div>
+                        </div>
+                        {% endif %}
+                        <div class="md:col-span-1 ml-auto flex gap-2">
+                            <a href="{% url 'businessasset_edit' a.id %}" class="px-2 py-1 border rounded">Edit</a>
+                            <a href="{% url 'businessasset_delete' a.id %}" class="px-2 py-1 border rounded text-red-600" onclick="return confirm('Delete this asset?')">Delete</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-sm text-muted-foreground">{% trans "No assets found." %}</div>
+            {% endfor %}
+        </div>
     {% endcomponent %}
 </div>
 {% endblock %}

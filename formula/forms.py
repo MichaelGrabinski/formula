@@ -408,3 +408,27 @@ class TaskForm(forms.ModelForm):
 
 class AIChatForm(forms.Form):
     prompt = forms.CharField(label="", widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Type your question..."}))
+
+
+# Savings forms
+from .models import SavingsPlan, SavingsGoal
+
+
+class SavingsPlanForm(forms.ModelForm):
+    class Meta:
+        model = SavingsPlan
+        fields = ["weekly_amount"]
+        widgets = {
+            "weekly_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
+        }
+
+
+class SavingsGoalForm(forms.ModelForm):
+    class Meta:
+        model = SavingsGoal
+        fields = ["title", "description", "target_amount", "current_amount"]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+            "target_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
+            "current_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
+        }

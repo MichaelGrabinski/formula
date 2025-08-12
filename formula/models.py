@@ -295,6 +295,9 @@ class FileStorage(models.Model):
         max_length=32, choices=CATEGORY_CHOICES, blank=True, null=True
     )
     description = models.CharField(max_length=255, blank=True, null=True)
+    load = models.ForeignKey(
+        "Load", on_delete=models.SET_NULL, null=True, blank=True, related_name="documents"
+    )
 
     @property
     def category_display(self):
@@ -339,6 +342,10 @@ class Route(models.Model):
     start_location = models.CharField(max_length=255)
     end_location = models.CharField(max_length=255)
     distance = models.FloatField()
+    start_latitude = models.FloatField(blank=True, null=True)
+    start_longitude = models.FloatField(blank=True, null=True)
+    end_latitude = models.FloatField(blank=True, null=True)
+    end_longitude = models.FloatField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -357,6 +364,10 @@ class BusinessAsset(models.Model):
     image = models.ImageField(upload_to="assets/", blank=True, null=True)
     purchase_date = models.DateField()
     value = models.FloatField()
+    # New optional fields to support richer display/filters
+    category = models.CharField(max_length=255, blank=True, null=True)
+    miles = models.FloatField(blank=True, null=True)
+    hours = models.FloatField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -443,6 +454,58 @@ class PersonalProjectMedia(models.Model):
         if name.endswith((".mp4", ".mov", ".webm", ".m4v")):
             return "video"
         return "other"
+
+
+# New: Personal savings goals
+class SavingsPlan(models.Model):
+    """Singleton-like model to store the weekly savings pool for goals."""
+    weekly_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Savings Plan"
+        verbose_name_plural = "Savings Plan"
+
+    def __str__(self):
+        return f"Weekly: ${self.weekly_amount}"
+
+
+class SavingsGoal(models.Model):
+    """A savings goal prioritized via drag-and-drop ordering."""
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    target_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    current_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    priority = models.PositiveIntegerField(default=0, help_text="Lower number = higher priority")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["priority", "created_at"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def remaining_amount(self):
+        try:
+            rem = (self.target_amount or 0) - (self.current_amount or 0)
+        except Exception:
+            rem = 0
+        return max(rem, 0)
+
+    def weeks_to_complete_alone(self, weekly_amount: float | int):
+        """Number of weeks to complete this goal alone given weekly pool (ceil)."""
+        try:
+            w = float(weekly_amount or 0)
+            if w <= 0:
+                return None
+            rem = float(self.remaining_amount)
+            if rem <= 0:
+                return 0
+            import math
+            return int(math.ceil(rem / w))
+        except Exception:
+            return None
 
 
 class PersonalRepair(models.Model):

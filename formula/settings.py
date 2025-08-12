@@ -134,6 +134,9 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "formula.context_processors.variables",
             ],
+            "builtins": [
+                "formula.templatetags.ai_extras",
+            ],
         },
     },
 ]

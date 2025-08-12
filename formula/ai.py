@@ -1,4 +1,5 @@
 import os
+import base64
 from typing import List, Dict, Optional, Tuple
 from math import sqrt
 from django.db.models import Q
@@ -76,6 +77,46 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     resp = client.embeddings.create(model=model, input=texts)
     # OpenAI SDK returns data list with .embedding
     return [d.embedding for d in resp.data]
+
+
+def generate_image(prompt: str, size: str = "1024x1024") -> Optional[bytes]:
+    """Generate an image from a prompt using OpenAI's Images API.
+    Returns raw PNG/JPEG bytes or None on failure.
+    """
+    client = _get_client()
+    # Normalize size string
+    allowed = {"256x256", "512x512", "1024x1024"}
+    sz = size if size in allowed else "1024x1024"
+    # First try modern SDK client if available
+    if client is not None:
+        try:
+            resp = client.images.generate(
+                model="gpt-image-1",
+                prompt=prompt,
+                size=sz,
+                response_format="b64_json",
+            )
+            data = resp.data[0]
+            b64 = getattr(data, "b64_json", None) or (data.get("b64_json") if isinstance(data, dict) else None)  # type: ignore[attr-defined]
+            if b64:
+                return base64.b64decode(b64)
+        except Exception:
+            pass
+
+    # Fallback: legacy SDK (openai.Image.create)
+    try:
+        import openai as openai_legacy  # type: ignore
+        api_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
+        if not getattr(openai_legacy, "api_key", None):
+            openai_legacy.api_key = api_key  # type: ignore[attr-defined]
+        resp = openai_legacy.Image.create(prompt=prompt, size=sz, response_format="b64_json")  # type: ignore[attr-defined]
+        data = resp["data"][0] if isinstance(resp, dict) else getattr(resp, "data", [None])[0]
+        b64 = (data or {}).get("b64_json")
+        if b64:
+            return base64.b64decode(b64)
+    except Exception:
+        pass
+    return None
 
 
 def _cosine(a: List[float], b: List[float]) -> float:

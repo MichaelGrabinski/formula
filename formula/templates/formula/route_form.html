@@ -15,5 +15,20 @@
             </div>
         </form>
     {% endcomponent %}
+
+        {% if object and object.start_latitude and object.end_latitude %}
+        {% component "unfold/components/card.html" %}
+            <div class="p-4">
+                <div class="text-sm mb-2">{% trans "Map preview" %}</div>
+                <iframe
+                    class="w-full h-80 rounded border"
+                    loading="lazy"
+                    referrerpolicy="no-referrer-when-downgrade"
+                    src="https://www.google.com/maps/embed/v1/directions?key={{ GOOGLE_MAPS_EMBED_API_KEY|default:'' }}&origin={{ object.start_latitude }},{{ object.start_longitude }}&destination={{ object.end_latitude }},{{ object.end_longitude }}">
+                </iframe>
+                <div class="text-xs text-muted-foreground mt-2">{% trans "Configure GOOGLE_MAPS_EMBED_API_KEY to enable the map." %}</div>
+            </div>
+        {% endcomponent %}
+        {% endif %}
 </div>
 {% endblock %}

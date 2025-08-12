@@ -3,6 +3,31 @@
 {% block content %}
 <h1 class="text-2xl font-semibold mb-6">Projects</h1>
 
+<div class="mb-6 border border-border rounded p-4 bg-muted/10">
+  <h2 class="text-lg font-medium mb-2">Generate project with AI</h2>
+  <form method="post" class="grid gap-2 md:grid-cols-2">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="generate_project_ai" />
+    <input name="name" class="p-2 border border-input rounded" placeholder="Project title" required />
+    <input name="description" class="p-2 border border-input rounded md:col-span-2" placeholder="Short description (optional)" />
+    <div class="md:col-span-2 flex gap-2">
+      <button class="px-4 py-2 bg-primary text-primary-foreground rounded" type="submit">Generate</button>
+      <span class="text-xs text-muted-foreground self-center">Creates tasks and image placeholders based on the title/description.</span>
+    </div>
+  </form>
+</div>
+
+<!-- Messages -->
+{% if messages %}
+    <div class="mb-6">
+        {% for message in messages %}
+            <div class="p-4 mb-2 rounded {% if message.tags == 'error' %}bg-red-100 text-red-700 border border-red-300{% elif message.tags == 'success' %}bg-green-100 text-green-700 border border-green-300{% elif message.tags == 'warning' %}bg-yellow-100 text-yellow-700 border border-yellow-300{% else %}bg-blue-100 text-blue-700 border border-blue-300{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
 <div class="flex items-center justify-between mb-6">
     <form method="get" class="flex items-center space-x-2">
         <input type="text" name="search" value="{{ search_query }}" class="flex-1 p-2 border border-input rounded-l-md focus:outline-none focus:ring-2 focus:ring-primary-foreground" placeholder="Search projects" />
@@ -23,8 +48,8 @@
     </div>
 </div>
 
-<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-  <div class="xl:col-span-2">
+<div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
+  <div class="xl:col-span-3">
     {% if form %}
     <div id="add-project-form" class="{% if edit_project %}mb-6{% else %}hidden mb-6{% endif %}">
       <form method="post" class="mb-6">
@@ -105,14 +130,14 @@
                     {% csrf_token %}
                     <input type="hidden" name="action" value="import_tasks_csv" />
                     <input type="hidden" name="project" value="{{ project.id }}" />
-                    <input type="file" name="file" accept=".csv" class="text-xs" />
+                    <input type="file" name="file" accept=".csv,text/csv" class="text-xs" required />
                     <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" type="submit">Import CSV</button>
                   </form>
                   <form method="post" enctype="multipart/form-data" class="inline-flex items-center gap-2">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="import_tasks_json" />
                     <input type="hidden" name="project" value="{{ project.id }}" />
-                    <input type="file" name="file" accept=".json,application/json" class="text-xs" />
+                    <input type="file" name="file" accept=".json,application/json" class="text-xs" required />
                     <button class="px-2 py-1 bg-secondary text-secondary-foreground rounded" type="submit">Import JSON</button>
                   </form>
                 </div>
@@ -188,6 +213,52 @@
                       {% if task.start_date or task.due_date %}
                         <div class="mt-2 text-xs opacity-80">{{ task.start_date|default:'?' }} → {{ task.due_date|default:'?' }}</div>
                       {% endif %}
+                      {% if task.ai_details %}
+                        <details class="mt-3 group">
+                          <summary class="text-xs underline cursor-pointer">AI Details</summary>
+                          <div class="mt-2 text-xs space-y-2 bg-white border rounded p-3">
+                            {% if task.ai_details.instructions|has_content %}
+                              <div>
+                                <div class="font-bold">Instructions</div>
+                                <ol class="list-decimal ml-5">
+                                  {% for it in task.ai_details.instructions|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ol>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.tips|has_content %}
+                              <div>
+                                <div class="font-bold">Tips</div>
+                                <ul class="list-disc ml-5">
+                                  {% for it in task.ai_details.tips|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ul>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.tools|has_content %}
+                              <div><span class="font-bold">Tools:</span> {{ task.ai_details.tools|to_text }}</div>
+                            {% endif %}
+                            {% if task.ai_details.materials|has_content %}
+                              <div><span class="font-bold">Materials:</span> {{ task.ai_details.materials|to_text }}</div>
+                            {% endif %}
+                            {% if task.ai_details.duration_estimate|has_content or task.ai_details.estimated_cost|has_content %}
+                              <div>
+                                {% if task.ai_details.duration_estimate|has_content %}<span class="font-bold">Duration:</span> {{ task.ai_details.duration_estimate|to_text }}{% endif %}
+                                {% if task.ai_details.estimated_cost|has_content %}<span class="ml-3 font-bold">Cost:</span> {{ task.ai_details.estimated_cost|to_text }}{% endif %}
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.safety|has_content %}
+                              <div>
+                                <div class="font-bold">Safety</div>
+                                <ul class="list-disc ml-5">
+                                  {% for it in task.ai_details.safety|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ul>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.raw|has_content %}
+                              <pre class="p-2 bg-white/60 border rounded overflow-auto whitespace-pre-wrap">{{ task.ai_details.raw|to_text }}</pre>
+                            {% endif %}
+                          </div>
+                        </details>
+                      {% endif %}
                       <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
                         <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' task.id %}?project={{ project.id }}">Edit</a>
                         <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' task.id %}" onclick="return confirm('Delete this task?');">Delete</a>
@@ -220,6 +291,52 @@
                       {% if task.description %}<div class="mt-2 text-sm max-h-16 overflow-hidden">{{ task.description }}</div>{% endif %}
                       {% if task.start_date or task.due_date %}
                         <div class="mt-2 text-xs opacity-80">{{ task.start_date|default:'?' }} → {{ task.due_date|default:'?' }}</div>
+                      {% endif %}
+                      {% if task.ai_details %}
+                        <details class="mt-3 group">
+                          <summary class="text-xs underline cursor-pointer">AI Details</summary>
+                          <div class="mt-2 text-xs space-y-2 bg-white border rounded p-3">
+                            {% if task.ai_details.instructions|has_content %}
+                              <div>
+                                <div class="font-bold">Instructions</div>
+                                <ol class="list-decimal ml-5">
+                                  {% for it in task.ai_details.instructions|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ol>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.tips|has_content %}
+                              <div>
+                                <div class="font-bold">Tips</div>
+                                <ul class="list-disc ml-5">
+                                  {% for it in task.ai_details.tips|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ul>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.tools|has_content %}
+                              <div><span class="font-bold">Tools:</span> {{ task.ai_details.tools|to_text }}</div>
+                            {% endif %}
+                            {% if task.ai_details.materials|has_content %}
+                              <div><span class="font-bold">Materials:</span> {{ task.ai_details.materials|to_text }}</div>
+                            {% endif %}
+                            {% if task.ai_details.duration_estimate|has_content or task.ai_details.estimated_cost|has_content %}
+                              <div>
+                                {% if task.ai_details.duration_estimate|has_content %}<span class="font-bold">Duration:</span> {{ task.ai_details.duration_estimate|to_text }}{% endif %}
+                                {% if task.ai_details.estimated_cost|has_content %}<span class="ml-3 font-bold">Cost:</span> {{ task.ai_details.estimated_cost|to_text }}{% endif %}
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.safety|has_content %}
+                              <div>
+                                <div class="font-bold">Safety</div>
+                                <ul class="list-disc ml-5">
+                                  {% for it in task.ai_details.safety|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ul>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.raw|has_content %}
+                              <pre class="p-2 bg-white/60 border rounded overflow-auto whitespace-pre-wrap">{{ task.ai_details.raw|to_text }}</pre>
+                            {% endif %}
+                          </div>
+                        </details>
                       {% endif %}
                       <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
                         <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' task.id %}?project={{ project.id }}">Edit</a>
@@ -254,6 +371,52 @@
                       {% if task.start_date or task.due_date %}
                         <div class="mt-2 text-xs opacity-80">{{ task.start_date|default:'?' }} → {{ task.due_date|default:'?' }}</div>
                       {% endif %}
+                      {% if task.ai_details %}
+                        <details class="mt-3 group">
+                          <summary class="text-xs underline cursor-pointer">AI Details</summary>
+                          <div class="mt-2 text-xs space-y-2 bg-white border rounded p-3">
+                            {% if task.ai_details.instructions|has_content %}
+                              <div>
+                                <div class="font-bold">Instructions</div>
+                                <ol class="list-decimal ml-5">
+                                  {% for it in task.ai_details.instructions|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ol>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.tips|has_content %}
+                              <div>
+                                <div class="font-bold">Tips</div>
+                                <ul class="list-disc ml-5">
+                                  {% for it in task.ai_details.tips|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ul>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.tools|has_content %}
+                              <div><span class="font-bold">Tools:</span> {{ task.ai_details.tools|to_text }}</div>
+                            {% endif %}
+                            {% if task.ai_details.materials|has_content %}
+                              <div><span class="font-bold">Materials:</span> {{ task.ai_details.materials|to_text }}</div>
+                            {% endif %}
+                            {% if task.ai_details.duration_estimate|has_content or task.ai_details.estimated_cost|has_content %}
+                              <div>
+                                {% if task.ai_details.duration_estimate|has_content %}<span class="font-bold">Duration:</span> {{ task.ai_details.duration_estimate|to_text }}{% endif %}
+                                {% if task.ai_details.estimated_cost|has_content %}<span class="ml-3 font-bold">Cost:</span> {{ task.ai_details.estimated_cost|to_text }}{% endif %}
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.safety|has_content %}
+                              <div>
+                                <div class="font-bold">Safety</div>
+                                <ul class="list-disc ml-5">
+                                  {% for it in task.ai_details.safety|to_lines %}<li>{{ it }}</li>{% endfor %}
+                                </ul>
+                              </div>
+                            {% endif %}
+                            {% if task.ai_details.raw|has_content %}
+                              <pre class="p-2 bg-white/60 border rounded overflow-auto whitespace-pre-wrap">{{ task.ai_details.raw|to_text }}</pre>
+                            {% endif %}
+                          </div>
+                        </details>
+                      {% endif %}
                       <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
                         <a class="px-2 py-1 bg-accent text-accent-foreground rounded" href="{% url 'edit_task' task.id %}?project={{ project.id }}">Edit</a>
                         <a class="px-2 py-1 bg-destructive text-destructive-foreground rounded" href="{% url 'delete_task' task.id %}" onclick="return confirm('Delete this task?');">Delete</a>
@@ -270,15 +433,18 @@
             </div>
 
             <!-- Calendar (FullCalendar) -->
-            <div id="calendar-section-{{ project.id }}">
+            <div id="calendar-section-{{ project.id }}" class="mb-14 lg:mb-16">
               <h4 class="font-semibold mb-2">Calendar</h4>
               <div id="cal-{{ project.id }}" class="border border-border rounded h-[320px] md:h-[380px] lg:h-[420px]"></div>
             </div>
 
+            <!-- Spacer to avoid overlap -->
+            <div style="height:48px; padding:55px;"></div>
+
             <!-- Gantt (jsgantt-improved) -->
-            <div id="gantt-section-{{ project.id }}">
+            <div id="gantt-section-{{ project.id }}" class="mt-16 lg:mt-20" style="margin-top:64px">
               <h4 class="font-semibold mb-2">Gantt <span class="text-xs text-muted-foreground">({{ project.tasks.count }} tasks)</span></h4>
-              <div id="gchart-{{ project.id }}" class="border border-border rounded overflow-auto"
+              <div id="gchart-{{ project.id }}" class="mt-2 border border-border rounded overflow-auto"
                    data-proj-start="{% if project.start_date %}{{ project.start_date|date:"Y-m-d" }}{% endif %}"
                    data-proj-end="{% if project.end_date %}{{ project.end_date|date:"Y-m-d" }}{% endif %}"
                    data-gantt='[
@@ -316,23 +482,23 @@
               </form>
               <div id="media-{{ project.id }}" class="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" data-media='[
                 {% for m in project.media.all %}
-                  {"src":"{{ m.file.url|default:m.url|escapejs }}","type":"{{ m.media_type }}","caption":"{{ m.caption|default:''|escapejs }}"}{% if not forloop.last %},{% endif %}
+                  {"src":"{% if m.file %}{{ m.file.url|escapejs }}{% elif m.url %}{{ m.url|escapejs }}{% else %}{% endif %}","type":"{{ m.media_type }}","caption":"{{ m.caption|default:''|escapejs }}"}{% if not forloop.last %},{% endif %}
                 {% endfor %}
               ]'>
                 {% for m in project.media.all %}
                   <div class="border border-border rounded p-2 cursor-pointer" data-index="{{ forloop.counter0 }}" onclick="openLightbox('{{ project.id }}', this.dataset.index)">
                     {% if m.media_type == 'image' %}
                       <div class="w-full aspect-[4/3] overflow-hidden rounded">
-                        <img src="{{ m.file.url|default:m.url }}" alt="{{ m.caption }}" class="w-full h-full object-cover" />
+                        <img src="{% if m.file %}{{ m.file.url }}{% else %}{{ m.url }}{% endif %}" alt="{{ m.caption }}" class="w-full h-full object-cover" />
                       </div>
                     {% elif m.media_type == 'video' %}
                       <div class="w-full aspect-[4/3] overflow-hidden rounded">
                         <video class="w-full h-full object-cover" muted>
-                          <source src="{{ m.file.url|default:m.url }}" />
+                          <source src="{% if m.file %}{{ m.file.url }}{% else %}{{ m.url }}{% endif %}" />
                         </video>
                       </div>
                     {% else %}
-                      <div class="text-sm"><a href="{{ m.file.url|default:m.url }}" class="text-blue-600 hover:underline" target="_blank" rel="noopener">Open</a></div>
+                      <div class="text-sm"><a href="{% if m.file %}{{ m.file.url }}{% else %}{{ m.url }}{% endif %}" class="text-blue-600 hover:underline" target="_blank" rel="noopener">Open</a></div>
                     {% endif %}
                     {% if m.caption %}<div class="mt-1 text-xs">{{ m.caption }}</div>{% endif %}
                   </div>
@@ -478,7 +644,38 @@
     const calEl = document.getElementById('cal-'+id);
     if(calEl && !calEl.dataset.inited){
       let events = [];
-      try { events = JSON.parse(wrap.getAttribute('data-events')||'[]'); } catch (e) { events = []; }
+      const pad = n => (n<10? '0'+n : ''+n);
+      const toYMD = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      const today = toYMD(new Date());
+      try {
+        const gEl = document.getElementById('gchart-'+id);
+        if(gEl){
+          const raw = gEl.getAttribute('data-gantt') || '[]';
+          const tasks = JSON.parse(raw);
+          tasks.forEach(t => {
+            let s = (t.start||'').trim() || (t.end||'').trim() || today;
+            let e = (t.end||'').trim() || '';
+            const color = (t.status === 'DONE') ? '#10b981' : (t.status === 'IN_PROGRESS' ? '#3b82f6' : '#f59e0b');
+            const evt = { title: (t.name||'Task'), start: s, backgroundColor: color, borderColor: color, textColor: '#111827' };
+            if(e) evt.end = e;
+            events.push(evt);
+          });
+        }
+      } catch (e) { events = []; }
+      // Fallback to pre-rendered data-events on wrapper if gantt data missing
+      if(!events.length){
+        try{
+          const rawEv = wrap.getAttribute('data-events') || '[]';
+          const arr = JSON.parse(rawEv);
+          arr.forEach(ev => {
+            let s = (ev.start||'').trim() || (ev.end||'').trim() || today;
+            let e = (ev.end||'').trim() || '';
+            const evt = { title: ev.title || 'Task', start: s, backgroundColor: ev.backgroundColor || '#93c5fd', borderColor: ev.borderColor || '#93c5fd', textColor: ev.textColor || '#111827' };
+            if(e) evt.end = e;
+            events.push(evt);
+          });
+        }catch(e){ /* noop */ }
+      }
       const cal = new FullCalendar.Calendar(calEl, { initialView: 'dayGridMonth', height: '100%', contentHeight: 'auto', aspectRatio: 1.4, eventDisplay: 'block', dayMaxEventRows: 3, events });
       cal.render();
       calEl.dataset.inited = '1';

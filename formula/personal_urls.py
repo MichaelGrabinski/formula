@@ -19,6 +19,11 @@ urlpatterns = [
     path("tasks/<int:pk>/delete/", views.ProjectTaskDeleteView.as_view(), name="delete_task"),
     path("tasks/<int:pk>/enrich/", views.enrich_task_with_ai, name="enrich_task"),
 
+    # Savings Goals
+    path("goals/", views.SavingsGoalsView.as_view(), name="goals"),
+    path("goals/reorder/", views.reorder_goals, name="goals_reorder"),
+    path("goals/update-amount/<int:pk>/", views.update_goal_amount, name="goals_update_amount"),
+
     path("assets/", views.PersonalAssetsView.as_view(), name="assets"),
     path("assets/<int:pk>/edit/", views.PersonalAssetEditView.as_view(), name="edit_asset"),
     path("assets/<int:pk>/delete/", views.PersonalAssetDeleteView.as_view(), name="delete_asset"),

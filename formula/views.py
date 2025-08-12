@@ -1,5 +1,6 @@
 import json
 import random
+import re
 from functools import lru_cache
 from django.http import HttpResponse, JsonResponse
 import csv
@@ -552,6 +553,71 @@ class RouteListView(AdminContextMixin, ListView):
     template_name = 'formula/route_list.html'
     title = _("Routes")
 
+    def render_to_response(self, context, **response_kwargs):
+        if self.request.GET.get('export') == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="routes.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['name','start_location','end_location','distance','start_latitude','start_longitude','end_latitude','end_longitude'])
+            for r in self.object_list:
+                writer.writerow([
+                    r.name, r.start_location, r.end_location, r.distance,
+                    getattr(r, 'start_latitude', ''), getattr(r, 'start_longitude', ''),
+                    getattr(r, 'end_latitude', ''), getattr(r, 'end_longitude', ''),
+                ])
+            return response
+        if self.request.GET.get('template') == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="routes_template.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['name','start_location','end_location','distance','start_latitude','start_longitude','end_latitude','end_longitude'])
+            writer.writerow(['I-90 East','Seattle, WA','Spokane, WA','279','47.6062','-122.3321','47.6588','-117.4260'])
+            return response
+        return super().render_to_response(context, **response_kwargs)
+
+    def post(self, request, *args, **kwargs):
+        f = request.FILES.get('csv_file')
+        if not f:
+            return redirect('route_list')
+        try:
+            import io, csv as _csv
+            data = f.read()
+            try:
+                text = data.decode('utf-8')
+            except Exception:
+                text = data.decode('latin-1')
+            reader = _csv.DictReader(io.StringIO(text))
+            for row in reader:
+                name = (row.get('name') or '').strip()
+                if not name:
+                    continue
+                start_loc = row.get('start_location') or ''
+                end_loc = row.get('end_location') or ''
+                try:
+                    dist = float(row.get('distance') or 0)
+                except Exception:
+                    dist = 0
+                def _flt(v):
+                    try:
+                        return float(v)
+                    except Exception:
+                        return None
+                Route.objects.update_or_create(
+                    name=name,
+                    defaults={
+                        'start_location': start_loc,
+                        'end_location': end_loc,
+                        'distance': dist,
+                        'start_latitude': _flt(row.get('start_latitude')),
+                        'start_longitude': _flt(row.get('start_longitude')),
+                        'end_latitude': _flt(row.get('end_latitude')),
+                        'end_longitude': _flt(row.get('end_longitude')),
+                    }
+                )
+        except Exception:
+            pass
+        return redirect('route_list')
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         rows = []
@@ -564,12 +630,18 @@ class RouteListView(AdminContextMixin, ListView):
         context["route_table"] = build_table([
             _("Name"), _("Start"), _("End"), _("Distance"), _("Created"), _("Actions")
         ], rows)
+        context["download_template_url"] = reverse_lazy("route_list") + "?template=csv"
+        try:
+            from django.conf import settings as dj_settings
+            context["GOOGLE_MAPS_EMBED_API_KEY"] = getattr(dj_settings, "GOOGLE_MAPS_EMBED_API_KEY", "")
+        except Exception:
+            context["GOOGLE_MAPS_EMBED_API_KEY"] = ""
         return context
 
 
 class RouteCreateView(AdminContextMixin, CreateView):
     model = Route
-    fields = ['name', 'start_location', 'end_location', 'distance']
+    fields = ['name', 'start_location', 'end_location', 'distance', 'start_latitude', 'start_longitude', 'end_latitude', 'end_longitude']
     template_name = 'formula/route_form.html'
     success_url = reverse_lazy('route_list')
     title = _("Add Route")
@@ -577,7 +649,7 @@ class RouteCreateView(AdminContextMixin, CreateView):
 
 class RouteUpdateView(AdminContextMixin, UpdateView):
     model = Route
-    fields = ['name', 'start_location', 'end_location', 'distance']
+    fields = ['name', 'start_location', 'end_location', 'distance', 'start_latitude', 'start_longitude', 'end_latitude', 'end_longitude']
     template_name = 'formula/route_form.html'
     success_url = reverse_lazy('route_list')
     title = _("Edit Route")
@@ -594,6 +666,98 @@ class LoadListView(AdminContextMixin, ListView):
     model = Load
     template_name = 'formula/load_list.html'
     title = _("Loads")
+
+    def post(self, request, *args, **kwargs):
+        f = request.FILES.get('csv_file')
+        if not f:
+            messages.error(request, _("No file selected."))
+            return redirect('load_list')
+
+        import io, csv as _csv
+        from datetime import datetime as _dt, timedelta as _td, date as _date
+
+        data = f.read()
+        try:
+            text = data.decode('utf-8')
+        except Exception:
+            text = data.decode('latin-1')
+
+        reader = _csv.DictReader(io.StringIO(text))
+        created = 0
+        skipped = 0
+
+        def _parse_date_any(s: str | None) -> _date | None:
+            if not s:
+                return None
+            s = s.strip()
+            fmts = ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d")
+            for fmt in fmts:
+                try:
+                    return _dt.strptime(s, fmt).date()
+                except Exception:
+                    continue
+            try:
+                return _date.fromisoformat(s)
+            except Exception:
+                return None
+
+        # Ensure a fallback route exists
+        fallback_route, _created_fb = Route.objects.get_or_create(
+            name="Unassigned", defaults={"start_location": "", "end_location": "", "distance": 0}
+        )
+
+        for row in reader:
+            try:
+                # normalize keys (case/space insensitive)
+                nrow = {(k or '').strip().lower(): (v or '') for k, v in row.items()}
+
+                def get_any(*keys):
+                    for k in keys:
+                        if k in nrow and str(nrow[k]).strip():
+                            return str(nrow[k]).strip()
+                    return ''
+
+                name = get_any('load_name', 'name', 'load')
+                if not name:
+                    skipped += 1
+                    continue
+                desc = get_any('description', 'desc', 'notes')
+                p = _parse_date_any(get_any('pickup_date', 'pickup', 'pickupdate', 'pickup date'))
+                d = _parse_date_any(get_any('delivery_date', 'delivery', 'deliverydate', 'delivery date', 'dropoff'))
+
+                # If dates missing, default to today and +1 day
+                if not p and not d:
+                    p = _date.today()
+                    d = p + _td(days=1)
+                elif p and not d:
+                    d = p
+                elif d and not p:
+                    p = d
+
+                route_name = get_any('route_name', 'route', 'routename') or "Unassigned"
+                route, _created_rt = Route.objects.get_or_create(
+                    name=route_name, defaults={'start_location': '', 'end_location': '', 'distance': 0}
+                )
+
+                Load.objects.create(
+                    load_name=name,
+                    description=desc,
+                    pickup_date=p,
+                    delivery_date=d,
+                    route=route or fallback_route,
+                )
+                created += 1
+            except Exception:
+                skipped += 1
+                continue
+
+        if created:
+            messages.success(request, _("Imported %(c)s loads. Skipped %(s)s.") % {"c": created, "s": skipped})
+        elif skipped:
+            messages.error(request, _("No loads imported. Skipped %(s)s. Check columns: load_name, description, pickup_date, delivery_date, route_name." ) % {"s": skipped})
+        else:
+            messages.info(request, _("Nothing to import."))
+        return redirect('load_list')
 
     def get_queryset(self):
         qs = super().get_queryset().order_by('-created_at')
@@ -621,6 +785,13 @@ class LoadListView(AdminContextMixin, ListView):
                 route_name = l.route.name if l.route_id else ''
                 days = (l.delivery_date - l.pickup_date).days if l.delivery_date and l.pickup_date else ''
                 writer.writerow([l.load_name, l.pickup_date, l.delivery_date, route_name, days])
+            return response
+        if self.request.GET.get('template') == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="loads_template.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['load_name','description','pickup_date','delivery_date','route_name'])
+            writer.writerow(['Acme Widgets','20 pallets widgets','2025-08-01','2025-08-05','I-90 East'])
             return response
         return super().render_to_response(context, **response_kwargs)
 
@@ -652,10 +823,13 @@ class LoadListView(AdminContextMixin, ListView):
             name_link = format_html('<a class="text-blue-600 hover:underline" href="{}">{}</a>', edit_url, l.load_name)
             route_name = l.route.name if l.route_id else ""
             days = (l.delivery_date - l.pickup_date).days if l.delivery_date and l.pickup_date else ""
-            rows.append([name_link, l.pickup_date, l.delivery_date, route_name, days])
+            docs = getattr(l, 'documents', None)
+            docs_count = docs.count() if docs is not None else 0
+            rows.append([name_link, l.pickup_date, l.delivery_date, route_name, days, docs_count])
         context["load_table"] = build_table([
-            _("Load"), _("Pickup"), _("Delivery"), _("Route"), _("Days")
+            _("Load"), _("Pickup"), _("Delivery"), _("Route"), _("Days"), _("Docs")
         ], rows)
+        context["download_template_url"] = reverse_lazy("load_list") + "?template=csv"
         return context
 
 
@@ -673,6 +847,25 @@ class LoadUpdateView(AdminContextMixin, UpdateView):
     template_name = 'formula/load_form.html'
     success_url = reverse_lazy('load_list')
     title = _("Edit Load")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["documents"] = self.object.documents.all().order_by('-uploaded_at')
+        return context
+
+    def post(self, request, *args, **kwargs):
+        # If uploading a document, handle it and stay on page
+        if request.POST.get('upload_for') == 'document':
+            self.object = self.get_object()
+            f = request.FILES.get('file')
+            if f:
+                FileStorage.objects.create(
+                    name=request.POST.get('name') or f.name,
+                    file=f,
+                    load=self.object,
+                )
+            return redirect('load_edit', pk=self.object.pk)
+        return super().post(request, *args, **kwargs)
 
 
 class LoadDeleteView(AdminContextMixin, DeleteView):
@@ -748,7 +941,7 @@ class BusinessAssetListView(AdminContextMixin, ListView):
 
 class BusinessAssetCreateView(AdminContextMixin, CreateView):
     model = BusinessAsset
-    fields = ['name', 'description', 'image', 'purchase_date', 'value']
+    fields = ['name', 'description', 'image', 'purchase_date', 'value', 'category', 'miles', 'hours']
     template_name = 'formula/businessasset_form.html'
     success_url = reverse_lazy('businessasset_list')
     title = _("Add Business Asset")
@@ -756,7 +949,7 @@ class BusinessAssetCreateView(AdminContextMixin, CreateView):
 
 class BusinessAssetUpdateView(AdminContextMixin, UpdateView):
     model = BusinessAsset
-    fields = ['name', 'description', 'image', 'purchase_date', 'value']
+    fields = ['name', 'description', 'image', 'purchase_date', 'value', 'category', 'miles', 'hours']
     template_name = 'formula/businessasset_form.html'
     success_url = reverse_lazy('businessasset_list')
     title = _("Edit Business Asset")
@@ -1007,15 +1200,54 @@ def enrich_task_record_with_ai(task: PersonalTask):
     try:
         data = json.loads(reply)
     except Exception:
-        import re
         m = re.search(r"\{[\s\S]*\}", reply)
         if m:
             try:
                 data = json.loads(m.group(0))
             except Exception:
                 data = None
+
+    # Normalize structure for template rendering
+    def _to_list(val):
+        if val is None:
+            return None
+        if isinstance(val, list):
+            # ensure strings
+            out = [str(x).strip() for x in val if str(x).strip()]
+            return out or None
+        if isinstance(val, str):
+            txt = val.strip()
+            if not txt:
+                return None
+            # split by newlines and common separators
+            parts = re.split(r"\r?\n|\u2022|•|;|\t", txt)
+            cleaned = []
+            for p in parts:
+                s = p.strip()
+                # strip leading bullets/numbers like -, *, +, 1), 1., - [ ]
+                s = re.sub(r"^(?:[-*+•\u2022]\s*|\d+[\).]\s*)", "", s).strip()
+                if s:
+                    cleaned.append(s)
+            return cleaned or None
+        # fallback
+        return [str(val).strip()]
+
     if not isinstance(data, dict):
         data = {"raw": reply}
+    else:
+        data = {
+            "instructions": _to_list(data.get("instructions")),
+            "tips": _to_list(data.get("tips")),
+            "tools": _to_list(data.get("tools")),
+            "materials": _to_list(data.get("materials")),
+            "safety": _to_list(data.get("safety")),
+            "duration_estimate": (str(data.get("duration_estimate")).strip() if data.get("duration_estimate") else None),
+            "estimated_cost": (str(data.get("estimated_cost")).strip() if data.get("estimated_cost") else None),
+        }
+        # If all normalized fields are empty, keep raw for debugging
+        if not any([data.get("instructions"), data.get("tips"), data.get("tools"), data.get("materials"), data.get("safety"), data.get("duration_estimate"), data.get("estimated_cost")]):
+            data = {"raw": reply}
+
     task.ai_suggested = True
     task.ai_details = data
     task.save(update_fields=["ai_suggested", "ai_details"])
@@ -1439,7 +1671,14 @@ class PersonalProjectsView(PersonalBaseView):
             response['Content-Disposition'] = 'attachment; filename="tasks_template.csv"'
             writer = csv.writer(response)
             writer.writerow(['title', 'description', 'section', 'status', 'priority', 'assigned_to', 'start_date', 'due_date', 'progress'])
-            writer.writerow(['Example task', 'Short note', 'Kitchen', 'TODO', 'MEDIUM', 'Alex', '2025-08-11', '2025-08-15', '0'])
+            # Add multiple examples with different date formats
+            writer.writerow(['Install new faucet', 'Replace kitchen faucet with modern stainless steel model', 'Kitchen', 'TODO', 'HIGH', 'John', '2025-08-12', '2025-08-15', '0'])
+            writer.writerow(['Paint living room', 'Apply fresh coat of paint to living room walls', 'Living Room', 'IN_PROGRESS', 'MEDIUM', 'Sarah', '2025-08-10', '2025-08-20', '25'])
+            writer.writerow(['Fix bathroom tile', 'Repair loose tile in master bathroom', 'Bathroom', 'DONE', 'LOW', 'Mike', '2025-08-01', '2025-08-05', '100'])
+            # Add note about date formats
+            writer.writerow(['# NOTE: Dates can be in YYYY-MM-DD or MM/DD/YYYY format', '', '', '', '', '', '', '', ''])
+            writer.writerow(['# Valid status values: TODO, IN_PROGRESS, DONE', '', '', '', '', '', '', '', ''])
+            writer.writerow(['# Valid priority values: LOW, MEDIUM, HIGH (or leave blank)', '', '', '', '', '', '', '', ''])
             return response
 
         q = request.GET.get('search', '').strip()
@@ -1465,6 +1704,124 @@ class PersonalProjectsView(PersonalBaseView):
 
     def post(self, request, *args, **kwargs):
         action = request.POST.get('action')
+        if action == 'generate_project_ai':
+            name = (request.POST.get('name') or '').strip()
+            description = (request.POST.get('description') or '').strip()
+            if not name:
+                messages.error(request, 'Provide a project name.')
+                return redirect('projects')
+            # Create the project first
+            p = PersonalProject.objects.create(name=name, description=description or None, status='PLANNED')
+            # Ask AI to generate a structured plan
+            try:
+                from .ai import chat_with_openai
+                system = (
+                    'You are a project planner. Given a title and description, generate a JSON with fields: '
+                    '{"tasks":[{"title":"...","description":"...","status":"TODO|IN_PROGRESS|DONE","priority":"LOW|MEDIUM|HIGH","section":"","assigned_to":"","start_date":"YYYY-MM-DD","due_date":"YYYY-MM-DD"}],'
+                    '"images":[{"prompt":"alt text or caption for image related to project"}]}'
+                )
+                user_msg = f"Title: {name}\nDescription: {description}"
+                content = chat_with_openai('gpt-4o-mini', system, [{ 'role':'user', 'content': user_msg }])
+            except Exception as e:
+                content = ''
+            import json, re
+            tasks = []
+            images = []
+            if content:
+                try:
+                    data = json.loads(content)
+                    tasks = data.get('tasks') or []
+                    images = data.get('images') or []
+                except Exception:
+                    m = re.search(r"\{[\s\S]*\}", content)
+                    if m:
+                        try:
+                            data = json.loads(m.group(0))
+                            tasks = data.get('tasks') or []
+                            images = data.get('images') or []
+                        except Exception:
+                            pass
+            # Save tasks (ensure dates for calendar/gantt where possible)
+            from .models import PersonalTask, PersonalProjectMedia
+            from datetime import datetime as _dt
+            from datetime import timedelta as _td
+            proj_start_candidates = []
+            proj_end_candidates = []
+            for t in tasks if isinstance(tasks, list) else []:
+                title = (t.get('title') or '').strip()
+                if not title:
+                    continue
+                nt = PersonalTask(project=p, title=title)
+                nt.description = (t.get('description') or '').strip() or None
+                st = (t.get('status') or 'TODO').strip().upper()
+                nt.status = st if st in ('TODO','IN_PROGRESS','DONE') else 'TODO'
+                pr = (t.get('priority') or '').strip().upper()
+                nt.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
+                nt.section = (t.get('section') or '').strip() or None
+                nt.assigned_to = (t.get('assigned_to') or '').strip() or None
+                try:
+                    sd = (t.get('start_date') or '').strip()
+                    dd = (t.get('due_date') or '').strip()
+                    # Parse ISO or fallback noop
+                    sdt = _dt.fromisoformat(sd).date() if sd else None
+                    edt = _dt.fromisoformat(dd).date() if dd else None
+                    if sdt and not edt:
+                        edt = sdt + _td(days=1)
+                    if edt and not sdt:
+                        sdt = edt - _td(days=1)
+                    # If both still missing, set a sensible default window
+                    if not sdt and not edt:
+                        today = timezone.localdate()
+                        sdt = today + _td(days=1)
+                        edt = today + _td(days=2)
+                    nt.start_date = sdt
+                    nt.due_date = edt
+                except Exception:
+                    pass
+                try:
+                    nt.save()
+                    if nt.start_date:
+                        proj_start_candidates.append(nt.start_date)
+                    if nt.due_date:
+                        proj_end_candidates.append(nt.due_date)
+                except Exception:
+                    continue
+            # Backfill project start/end if missing
+            try:
+                if not p.start_date and proj_start_candidates:
+                    p.start_date = min(proj_start_candidates)
+                if not p.end_date and proj_end_candidates:
+                    p.end_date = max(proj_end_candidates)
+                if p.start_date or p.end_date:
+                    p.save(update_fields=[f for f in ['start_date','end_date'] if getattr(p, f)])
+            except Exception:
+                pass
+            # Save image placeholders as media entries (URL field) using prompts as captions
+            # Generate images when possible; fallback to placeholder URLs
+            for idx, im in enumerate(images if isinstance(images, list) else []):
+                cap = (im.get('prompt') or '').strip()
+                if not cap:
+                    continue
+                try:
+                    # Try AI image generation
+                    from .ai import generate_image
+                    from django.core.files.base import ContentFile
+                    img_bytes = generate_image(cap, size="1024x1024")
+                    if img_bytes:
+                        fname = f"ai_project_{p.id}_{idx+1}.png"
+                        media = PersonalProjectMedia(project=p, caption=cap)
+                        media.file.save(fname, ContentFile(img_bytes), save=True)
+                        continue
+                except Exception:
+                    pass
+                # Fallback to URL placeholder so UI still shows a tile
+                try:
+                    PersonalProjectMedia.objects.create(project=p, url='https://via.placeholder.com/512?text=AI+Image', caption=cap)
+                except Exception:
+                    pass
+            messages.success(request, 'AI generated project created.')
+            return redirect(f"{reverse_lazy('projects')}?project={p.id}")
+
         if action == 'add_task':
             pid = request.POST.get('project')
             project = get_object_or_404(PersonalProject, pk=pid)
@@ -1531,41 +1888,79 @@ class PersonalProjectsView(PersonalBaseView):
             project = get_object_or_404(PersonalProject, pk=pid)
             f = request.FILES.get('file')
             if not f:
+                messages.error(request, 'No file selected for import.')
                 return redirect(f"{reverse_lazy('projects')}?project={pid}")
+            
             import io
             try:
                 text = f.read().decode('utf-8', errors='ignore')
             except Exception:
-                text = f.read().decode('latin-1', errors='ignore')
-            reader = csv.DictReader(io.StringIO(text))
-            for row in reader:
-                title = (row.get('title') or row.get('Task') or '').strip()
-                if not title:
-                    continue
-                t = PersonalTask(project=project, title=title)
-                t.description = (row.get('description') or row.get('Description') or '').strip() or None
-                t.section = (row.get('section') or '').strip() or None
-                st = (row.get('status') or '').strip().upper()
-                if st not in ('TODO','IN_PROGRESS','DONE'):
-                    st = 'TODO'
-                t.status = st
-                pr = (row.get('priority') or '').strip().upper()
-                t.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
-                t.assigned_to = (row.get('assigned_to') or '').strip() or None
                 try:
-                    t.progress = int(row.get('progress') or 0)
-                except Exception:
-                    t.progress = 0
-                sd = (row.get('start_date') or row.get('start') or '').strip()
-                dd = (row.get('due_date') or row.get('end') or '').strip()
-                try:
-                    if sd:
-                        t.start_date = timezone.datetime.fromisoformat(sd).date()
-                    if dd:
-                        t.due_date = timezone.datetime.fromisoformat(dd).date()
-                except Exception:
-                    pass
-                t.save()
+                    text = f.read().decode('latin-1', errors='ignore')
+                except Exception as e:
+                    messages.error(request, f'Error reading file: {e}')
+                    return redirect(f"{reverse_lazy('projects')}?project={pid}")
+            
+            try:
+                reader = csv.DictReader(io.StringIO(text))
+                imported_count = 0
+                error_count = 0
+                for row_num, row in enumerate(reader, start=1):
+                    title = (row.get('title') or row.get('Task') or '').strip()
+                    if not title:
+                        continue
+                    if title.startswith('#'):  # Skip comment rows
+                        continue
+                    
+                    try:
+                        t = PersonalTask(project=project, title=title)
+                        t.description = (row.get('description') or row.get('Description') or '').strip() or None
+                        t.section = (row.get('section') or '').strip() or None
+                        st = (row.get('status') or '').strip().upper()
+                        if st not in ('TODO','IN_PROGRESS','DONE'):
+                            st = 'TODO'
+                        t.status = st
+                        pr = (row.get('priority') or '').strip().upper()
+                        t.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
+                        t.assigned_to = (row.get('assigned_to') or '').strip() or None
+                        try:
+                            t.progress = int(row.get('progress') or 0)
+                        except Exception:
+                            t.progress = 0
+                        sd = (row.get('start_date') or row.get('start') or '').strip()
+                        dd = (row.get('due_date') or row.get('end') or '').strip()
+                        try:
+                            if sd:
+                                # Try different date formats
+                                try:
+                                    t.start_date = timezone.datetime.fromisoformat(sd).date()
+                                except ValueError:
+                                    try:
+                                        t.due_date = _dt.strptime(dd, '%Y-%m-%d').date()
+                                    except ValueError:
+                                        try:
+                                            t.due_date = _dt.strptime(dd, '%m/%d/%Y').date()
+                                        except ValueError:
+                                            pass
+                        except Exception:
+                            pass
+                        t.save()
+                        imported_count += 1
+                    except Exception as e:
+                        error_count += 1
+                        # Skip this row and continue
+                        continue
+                
+                if imported_count > 0:
+                    if error_count > 0:
+                        messages.success(request, f'Successfully imported {imported_count} tasks. {error_count} rows had errors and were skipped.')
+                    else:
+                        messages.success(request, f'Successfully imported {imported_count} tasks.')
+                else:
+                    messages.warning(request, 'No tasks were imported. Please check your CSV format.')
+            except Exception as e:
+                messages.error(request, f'Error processing CSV file: {e}')
+            
             return redirect(f"{reverse_lazy('projects')}?project={pid}")
 
         if action == 'import_tasks_json':
@@ -1573,44 +1968,60 @@ class PersonalProjectsView(PersonalBaseView):
             project = get_object_or_404(PersonalProject, pk=pid)
             f = request.FILES.get('file')
             if not f:
+                messages.error(request, 'No file selected for import.')
                 return redirect(f"{reverse_lazy('projects')}?project={pid}")
+            
             import io
-            text = f.read().decode('utf-8', errors='ignore')
             try:
+                text = f.read().decode('utf-8', errors='ignore')
                 items = json.loads(text)
-            except Exception:
-                items = []
-            if isinstance(items, dict):
-                items = items.get('tasks') or []
-            for row in items if isinstance(items, list) else []:
-                title = (row.get('title') or '').strip()
-                if not title:
-                    continue
-                t = PersonalTask(project=project, title=title)
-                t.description = (row.get('description') or '').strip() or None
-                t.section = (row.get('section') or '').strip() or None
-                st = (row.get('status') or '').strip().upper()
-                if st not in ('TODO','IN_PROGRESS','DONE'):
-                    st = 'TODO'
-                t.status = st
-                pr = (row.get('priority') or '').strip().upper()
-                t.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
-                t.assigned_to = (row.get('assigned_to') or '').strip() or None
-                try:
-                    t.progress = int(row.get('progress') or 0)
-                except Exception:
-                    t.progress = 0
-                sd = row.get('start_date') or row.get('start')
-                dd = row.get('due_date') or row.get('end')
-                from datetime import datetime as _dt
-                try:
-                    if sd:
-                        t.start_date = _dt.fromisoformat(sd).date()
-                    if dd:
-                        t.due_date = _dt.fromisoformat(dd).date()
-                except Exception:
-                    pass
-                t.save()
+            except Exception as e:
+                messages.error(request, f'Error reading JSON file: {e}')
+                return redirect(f"{reverse_lazy('projects')}?project={pid}")
+            
+            try:
+                if isinstance(items, dict):
+                    items = items.get('tasks') or []
+                
+                imported_count = 0
+                for row in items if isinstance(items, list) else []:
+                    title = (row.get('title') or '').strip()
+                    if not title:
+                        continue
+                    t = PersonalTask(project=project, title=title)
+                    t.description = (row.get('description') or '').strip() or None
+                    t.section = (row.get('section') or '').strip() or None
+                    st = (row.get('status') or '').strip().upper()
+                    if st not in ('TODO','IN_PROGRESS','DONE'):
+                        st = 'TODO'
+                    t.status = st
+                    pr = (row.get('priority') or '').strip().upper()
+                    t.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
+                    t.assigned_to = (row.get('assigned_to') or '').strip() or None
+                    try:
+                        t.progress = int(row.get('progress') or 0)
+                    except Exception:
+                        t.progress = 0
+                    sd = row.get('start_date') or row.get('start')
+                    dd = row.get('due_date') or row.get('end')
+                    from datetime import datetime as _dt
+                    try:
+                        if sd:
+                            t.start_date = _dt.fromisoformat(sd).date()
+                        if dd:
+                            t.due_date = _dt.fromisoformat(dd).date()
+                    except Exception:
+                        pass
+                    t.save()
+                    imported_count += 1
+                
+                if imported_count > 0:
+                    messages.success(request, f'Successfully imported {imported_count} tasks from JSON.')
+                else:
+                    messages.warning(request, 'No tasks were imported. Please check your JSON format.')
+            except Exception as e:
+                messages.error(request, f'Error processing JSON file: {e}')
+            
             return redirect(f"{reverse_lazy('projects')}?project={pid}")
 
         # default: add or edit project
@@ -1618,6 +2029,9 @@ class PersonalProjectsView(PersonalBaseView):
         if form.is_valid():
             form.save()
         return redirect('projects')
+
+
+
 
 
 # New: Personal section root dashboard
@@ -1763,3 +2177,131 @@ class PersonalAIChatView(PersonalBaseView, FormView):
         ctx = super().get_context_data(**kwargs)
         ctx.update({'chat': self.get_chat()})
         return ctx
+
+
+# New: Savings Goals page
+class SavingsGoalsView(PersonalBaseView):
+    template_name = 'goals.html'
+
+    def _get_plan(self):
+        from .models import SavingsPlan
+        plan = SavingsPlan.objects.first()
+        if not plan:
+            plan = SavingsPlan.objects.create(weekly_amount=0)
+        return plan
+
+    def get(self, request, *args, **kwargs):
+        from .models import SavingsGoal
+        from .forms import SavingsPlanForm, SavingsGoalForm
+        plan = self._get_plan()
+        goals = list(SavingsGoal.objects.all().order_by('priority', 'created_at'))
+        ctx = self.get_context_data(
+            plan_form=SavingsPlanForm(instance=plan),
+            goal_form=SavingsGoalForm(),
+            goals=goals,
+            weekly=float(plan.weekly_amount or 0),
+            schedule=self._compute_schedule(goals, float(plan.weekly_amount or 0)),
+        )
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        action = request.POST.get('action')
+        from .models import SavingsGoal
+        from .forms import SavingsPlanForm, SavingsGoalForm
+        plan = self._get_plan()
+        if action == 'set_weekly':
+            form = SavingsPlanForm(request.POST, instance=plan)
+            if form.is_valid():
+                form.save()
+            return redirect('goals')
+        if action == 'add_goal':
+            form = SavingsGoalForm(request.POST)
+            if form.is_valid():
+                g = form.save(commit=False)
+                # Set priority to end
+                last = SavingsGoal.objects.order_by('-priority').first()
+                g.priority = (last.priority + 1) if last else 0
+                g.save()
+            return redirect('goals')
+        if action == 'edit_goal':
+            pk = request.POST.get('id')
+            g = get_object_or_404(SavingsGoal, pk=pk)
+            form = SavingsGoalForm(request.POST, instance=g)
+            if form.is_valid():
+                form.save()
+            return redirect('goals')
+        if action == 'delete_goal':
+            pk = request.POST.get('id')
+            g = get_object_or_404(SavingsGoal, pk=pk)
+            g.delete()
+            return redirect('goals')
+        return redirect('goals')
+
+    def _compute_schedule(self, goals, weekly):
+        """Return a list of {id,title,remaining,weeks,cumulative_weeks,eta_date} based on priority order."""
+        out = []
+        if weekly <= 0:
+            for g in goals:
+                out.append({
+                    'id': g.id, 'title': g.title, 'remaining': float(g.remaining_amount),
+                    'weeks': None, 'cumulative_weeks': None, 'eta_date': None
+                })
+            return out
+        cum = 0
+        today = timezone.localdate()
+        for g in goals:
+            rem = float(g.remaining_amount)
+            if rem <= 0:
+                wk = 0
+            else:
+                import math
+                wk = int(math.ceil(rem / float(weekly)))
+            cum += wk
+            eta = (today + timedelta(weeks=cum)) if wk is not None else None
+            out.append({
+                'id': g.id,
+                'title': g.title,
+                'remaining': rem,
+                'weeks': wk,
+                'cumulative_weeks': cum if wk is not None else None,
+                'eta_date': eta,
+            })
+        return out
+
+
+@csrf_exempt
+def reorder_goals(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    from .models import SavingsGoal
+    try:
+        import json
+        data = json.loads(request.body.decode('utf-8'))
+        ids = data.get('ids') or []
+        for i, pk in enumerate(ids):
+            SavingsGoal.objects.filter(pk=pk).update(priority=i)
+        return JsonResponse({'ok': True})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+@csrf_exempt
+def update_goal_amount(request, pk: int):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    from .models import SavingsGoal
+    g = get_object_or_404(SavingsGoal, pk=pk)
+    try:
+        import json
+        data = json.loads(request.body.decode('utf-8'))
+        cur = data.get('current_amount')
+        if cur is not None:
+            g.current_amount = cur
+            g.save(update_fields=['current_amount'])
+        tgt = data.get('target_amount')
+        if tgt is not None:
+            g.target_amount = tgt
+            g.save(update_fields=['target_amount'])
+        return JsonResponse({'ok': True})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)

@@ -54,8 +54,16 @@
                 {% component "unfold/components/kpi.html" with title=_("Without Route") metric=without_route %}{% endcomponent %}
             </div>
 
-            <div class="flex justify-end mb-2">
-                <a href="?q={{ q }}&route={{ route_selected }}&pstart={{ pstart }}&pend={{ pend }}&export=csv" class="text-sm underline">{% trans "Export CSV" %}</a>
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-2">
+                <div class="text-sm">
+                    <a href="?q={{ q }}&route={{ route_selected }}&pstart={{ pstart }}&pend={{ pend }}&export=csv" class="underline">{% trans "Export CSV" %}</a>
+                    <span class="mx-2">·</span>
+                    <a href="{{ download_template_url }}" class="underline">{% trans "Download CSV Template" %}</a>
+                </div>
+                <form method="post" enctype="multipart/form-data" class="flex items-center gap-2">{% csrf_token %}
+                    <input type="file" name="csv_file" accept=".csv" class="file-input file-input-sm" />
+                    {% component "unfold/components/button.html" with submit=1 size="sm" %}{% trans "Import CSV" %}{% endcomponent %}
+                </form>
             </div>
 
             {% component "unfold/components/table.html" with table=load_table card_included=1 %}{% endcomponent %}

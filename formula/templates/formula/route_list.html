@@ -17,7 +17,35 @@
     </div>
 
     {% component "unfold/components/card.html" %}
-        {% component "unfold/components/table.html" with table=route_table card_included=1 %}{% endcomponent %}
+                <div class="p-4">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+                        <div class="text-sm">
+                            <a href="?export=csv" class="underline">{% trans "Export CSV" %}</a>
+                            <span class="mx-2">·</span>
+                            <a href="{{ download_template_url }}" class="underline">{% trans "Download CSV Template" %}</a>
+                        </div>
+                        <form method="post" enctype="multipart/form-data" class="flex items-center gap-2">{% csrf_token %}
+                            <input type="file" name="csv_file" accept=".csv" class="file-input file-input-sm" />
+                            {% component "unfold/components/button.html" with submit=1 size="sm" %}{% trans "Import CSV" %}{% endcomponent %}
+                        </form>
+                    </div>
+                    {% component "unfold/components/table.html" with table=route_table card_included=1 %}{% endcomponent %}
+                </div>
     {% endcomponent %}
+
+        {% if object_list and object_list.0.start_latitude and object_list.0.end_latitude %}
+        {% component "unfold/components/card.html" %}
+        <div class="p-4">
+            <div class="text-sm mb-2">{% trans "Map preview for" %} {{ object_list.0.name }}</div>
+            <iframe
+                class="w-full h-80 rounded border"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                src="https://www.google.com/maps/embed/v1/directions?key={{ GOOGLE_MAPS_EMBED_API_KEY|default:'' }}&origin={{ object_list.0.start_latitude }},{{ object_list.0.start_longitude }}&destination={{ object_list.0.end_latitude }},{{ object_list.0.end_longitude }}">
+            </iframe>
+            <div class="text-xs text-muted-foreground mt-2">{% trans "Configure GOOGLE_MAPS_EMBED_API_KEY in settings/context to enable maps." %}</div>
+        </div>
+        {% endcomponent %}
+        {% endif %}
 </div>
 {% endblock %}
