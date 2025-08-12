@@ -12,7 +12,6 @@ fly.toml
 .vscode
 static
 media
-requirements.txt
 .dockerignore
 database.sqlite
 unfold_studio
