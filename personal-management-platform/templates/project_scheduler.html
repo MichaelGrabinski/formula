@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">Project Tasks Scheduler</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <div class="rounded border border-border p-4 bg-muted/40">
+    <div class="text-sm text-muted-foreground">Total Task Hours</div>
+    <div id="kpi_total_hours" class="text-2xl font-semibold">{{ total_hours }}</div>
+  </div>
+  <div class="rounded border border-border p-4 bg-muted/40">
+    <div class="text-sm text-muted-foreground">Weekly Capacity (hrs)</div>
+    <div id="kpi_capacity" class="text-2xl font-semibold">{{ capacity_hours }}</div>
+  </div>
+  <div class="rounded border border-border p-4 bg-muted/40">
+    <div class="text-sm text-muted-foreground">Remaining (hrs)</div>
+    <div id="kpi_remaining" class="text-2xl font-semibold">{{ remaining_hours }}</div>
+  </div>
+  
+</div>
+<div class="mb-3">
+  <a href="{% url 'projects' %}" class="underline text-sm">Back to Projects</a>
+</div>
+
+<form id="scheduler-filters" method="get" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+  <div class="flex items-center space-x-2">
+    <label class="w-24 text-sm">Project</label>
+    <select name="project" class="flex-1 p-2 border rounded">
+      <option value="">All</option>
+      {% for p in projects %}
+      <option value="{{ p.id }}" {% if selected_project == p.id %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="flex items-center space-x-2">
+    <label class="w-24 text-sm">Week</label>
+    <input type="date" name="week" value="{{ days.0|date:'Y-m-d' }}" class="flex-1 p-2 border rounded" />
+  </div>
+  <div class="flex items-center space-x-2">
+    <label class="w-24 text-sm">Open</label>
+    <input type="time" name="open_start" value="{{ open_start }}" class="p-2 border rounded" />
+    <span>-</span>
+    <input type="time" name="open_end" value="{{ open_end }}" class="p-2 border rounded" />
+  </div>
+  <div class="md:col-span-3 flex justify-end">
+    <button class="px-4 py-2 bg-secondary text-secondary-foreground rounded">Apply</button>
+  </div>
+</form>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div class="md:col-span-1 border rounded p-3">
+    <h2 class="text-lg font-medium mb-2">Tasks</h2>
+    <div id="taskTiles" class="space-y-2 min-h-40">
+      {% for t in tasks %}
+      <div class="p-3 border rounded bg-muted cursor-move" draggable="true" data-id="{{ t.id }}" data-title="{{ t.title }}" data-hours="{{ t.estimated_hours|default_if_none:0 }}">
+        <div class="font-medium">{{ t.title }}</div>
+        <div class="text-xs text-muted-foreground">{{ t.project.name }}{% if t.estimated_hours %} • {{ t.estimated_hours }}h{% endif %}</div>
+      </div>
+      {% empty %}
+      <div class="text-sm text-muted-foreground">No tasks with estimated hours.</div>
+      {% endfor %}
+    </div>
+    <div class="mt-3">
+      <button id="autoBtn" class="px-3 py-2 bg-primary text-primary-foreground rounded">Auto-schedule</button>
+    </div>
+  </div>
+  <div class="md:col-span-2 border rounded p-3">
+    <h2 class="text-lg font-medium mb-2">Week of {{ days.0|date:'M d, Y' }}</h2>
+    <div class="mb-2 text-xs text-muted-foreground">Open window: <span id="openWindowLabel"></span></div>
+    <div id="week" class="grid grid-cols-7 gap-2">
+      {% for d in days %}
+  <div class="border rounded p-2 min-h-40 bg-muted/20 hover:bg-muted/30 transition-colors">
+        <div class="text-sm font-medium mb-2">{{ d|date:'D m/d' }}</div>
+        <div class="relative h-96 overflow-y-auto bg-background/40 rounded">
+          <div class="absolute left-0 right-0 h-full bg-gradient-to-b from-transparent via-muted/30 to-transparent pointer-events-none" style="z-index:0"></div>
+          <div class="dropzone space-y-2 relative h-96" style="z-index:1" data-date="{{ d|date:'Y-m-d' }}"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mt-3 flex justify-end space-x-2">
+      <form id="icsForm" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="export_ics" />
+        <input type="hidden" name="schedule_json" id="schedule_json" />
+        <button type="submit" class="px-3 py-2 bg-accent text-accent-foreground rounded">Export ICS</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Drag and drop
+  const tiles = document.querySelectorAll('#taskTiles [draggable]');
+  const zones = document.querySelectorAll('.dropzone');
+  tiles.forEach(el => {
+    el.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', JSON.stringify({ id: el.dataset.id, title: el.dataset.title, hours: parseFloat(el.dataset.hours || '0') }));
+    });
+  });
+  zones.forEach(z => {
+    z.addEventListener('dragover', e => e.preventDefault());
+    z.addEventListener('drop', e => {
+      e.preventDefault();
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const block = document.createElement('div');
+      block.className = 'p-2 border rounded bg-background';
+      block.textContent = data.title + ' • ' + (data.hours || 0) + 'h';
+      block.dataset.id = data.id;
+      z.appendChild(block);
+    });
+  });
+  // Auto schedule
+  function getCookie(name){
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+  function to12h(hhmm){
+    const [h,m] = (hhmm||'00:00').split(':').map(x=>parseInt(x,10));
+    const ampm = h>=12 ? 'PM' : 'AM';
+    const h12 = ((h+11)%12)+1;
+    return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+  }
+  function labelOpenWindow(){
+    const params = new URLSearchParams(new FormData(document.getElementById('scheduler-filters')));
+    const s = params.get('open_start') || '18:00';
+    const e = params.get('open_end') || '22:00';
+    const el = document.getElementById('openWindowLabel');
+    if (el) el.textContent = `${to12h(s)} – ${to12h(e)}`;
+  }
+  document.getElementById('autoBtn')?.addEventListener('click', async function(){
+    const params = new URLSearchParams(new FormData(document.getElementById('scheduler-filters')));
+    const body = new URLSearchParams(params);
+    body.append('action', 'auto_schedule');
+    // Prefer CSRF token from existing form then fallback to cookie
+    const csrfInput = document.querySelector('#icsForm input[name=csrfmiddlewaretoken]');
+    const csrf = csrfInput ? csrfInput.value : (getCookie('csrftoken') || '');
+    let res;
+    try {
+      res = await fetch('', { method: 'POST', headers: { 'X-CSRFToken': csrf }, credentials: 'same-origin', body });
+    } catch (e) {
+      console.error('Auto-schedule network error', e);
+      alert('Auto-schedule failed due to a network error.');
+      return;
+    }
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error('Auto-schedule server error', res.status, txt);
+      alert('Auto-schedule failed. See console for details.');
+      return;
+    }
+    const sched = await res.json();
+    // Render into zones
+    document.querySelectorAll('.dropzone').forEach(z => z.innerHTML = '');
+    (sched.days || []).forEach(day => {
+      const z = document.querySelector('.dropzone[data-date="' + day.date + '"]');
+      if (!z) return;
+      // Prepare proportional scale
+      const params = new URLSearchParams(new FormData(document.getElementById('scheduler-filters')));
+      const s = (params.get('open_start') || '18:00').split(':').map(n=>parseInt(n,10));
+      const e = (params.get('open_end') || '22:00').split(':').map(n=>parseInt(n,10));
+      const startMin = s[0]*60 + s[1];
+      const endMin = e[0]*60 + e[1];
+      const totalMin = Math.max(endMin - startMin, 1);
+      const colors = ['#6ee7b7','#93c5fd','#fca5a5','#a78bfa','#fdba74','#38bdf8','#f472b6','#86efac'];
+      day.blocks.forEach((b, i) => {
+        const block = document.createElement('div');
+        block.className = 'relative rounded shadow-sm ring-1';
+        block.dataset.id = b.task_id;
+        const startParts = (b.start||'18:00').split(':').map(n=>parseInt(n,10));
+        const startAbs = startParts[0]*60 + startParts[1];
+        const offset = Math.max(startAbs - startMin, 0);
+        const height = Math.max((b.duration/totalMin) * 100, 6); // % of column height
+        const top = (offset/totalMin) * 100;
+        block.style.position = 'absolute';
+        block.style.left = '4px';
+        block.style.right = '4px';
+        block.style.top = `${top}%`;
+        block.style.height = `${height}%`;
+        const color = colors[(b.task_id || i) % colors.length];
+        block.style.backgroundColor = color + '33';
+        block.style.borderColor = color;
+        block.style.boxShadow = `0 1px 2px 0 ${color}66`;
+        block.innerHTML = `<div class="text-xs p-1">
+          <div class="font-medium truncate">${b.title}</div>
+          <div class="opacity-80">${to12h(b.start)} – ${to12h(b.end)} • ${Math.round((b.duration/60)*10)/10}h</div>
+        </div>`;
+        z.appendChild(block);
+      });
+    });
+    window.__lastSchedule = sched;
+    // Update KPIs
+    try {
+      const total = Array.from(document.querySelectorAll('#taskTiles [draggable]')).reduce((acc, el) => acc + (parseFloat(el.dataset.hours||'0')||0), 0);
+      const openStart = new URLSearchParams(new FormData(document.getElementById('scheduler-filters'))).get('open_start') || '18:00';
+      const openEnd = new URLSearchParams(new FormData(document.getElementById('scheduler-filters'))).get('open_end') || '22:00';
+      const [sh, sm] = openStart.split(':').map(x=>parseInt(x,10));
+      const [eh, em] = openEnd.split(':').map(x=>parseInt(x,10));
+      const perDayMin = Math.max(((eh*60+em) - (sh*60+sm)), 0);
+      const capacity = Math.round(((perDayMin*7)/60)*100)/100;
+      document.getElementById('kpi_total_hours').textContent = (Math.round(total*100)/100).toFixed(2);
+      document.getElementById('kpi_capacity').textContent = capacity.toFixed(2);
+      document.getElementById('kpi_remaining').textContent = (capacity - total).toFixed(2);
+    } catch (e) {}
+  });
+  // Initialize labels on load
+  labelOpenWindow();
+  // ICS export payload
+  const icsForm = document.getElementById('icsForm');
+  icsForm?.addEventListener('submit', function(){
+    const sched = window.__lastSchedule || { days: [] };
+    document.getElementById('schedule_json').value = JSON.stringify(sched);
+  });
+})();
+</script>
+{% endblock %}

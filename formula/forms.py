@@ -37,6 +37,7 @@ from formula.models import (
     PersonalProject,
     PersonalRepair,
     PersonalFinancialEntry,
+    PersonalMonthlyItem,
     PersonalDocument,
     PersonalReport,
     PersonalTask,
@@ -358,7 +359,7 @@ class RepairForm(forms.ModelForm):
 class FinancialEntryForm(forms.ModelForm):
     class Meta:
         model = PersonalFinancialEntry
-        fields = ["date", "amount", "description"]
+        fields = ["date", "amount", "type", "category", "description"]
 
 
 class DocumentForm(forms.ModelForm):
@@ -384,6 +385,7 @@ class ReportForm(forms.ModelForm):
 # New: PersonalTask form used in projects task management
 class TaskForm(forms.ModelForm):
     progress = forms.IntegerField(required=False, min_value=0, max_value=100)
+    estimated_hours = forms.DecimalField(required=False, min_value=0, max_value=9999, decimal_places=2)
 
     class Meta:
         model = PersonalTask
@@ -398,6 +400,7 @@ class TaskForm(forms.ModelForm):
             "start_date",
             "due_date",
             "progress",
+            "estimated_hours",
             "ai_suggested",
         ]
 
@@ -431,4 +434,16 @@ class SavingsGoalForm(forms.ModelForm):
             "description": forms.Textarea(attrs={"rows": 2}),
             "target_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
             "current_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
+        }
+
+
+# New: Monthly recurring income/expense form
+class MonthlyItemForm(forms.ModelForm):
+    class Meta:
+        model = PersonalMonthlyItem
+        fields = ["title", "amount", "type", "category", "day_of_month", "notes"]
+        widgets = {
+            "amount": forms.NumberInput(attrs={"step": "0.01"}),
+            "day_of_month": forms.NumberInput(attrs={"min": "1", "max": "31"}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
         }

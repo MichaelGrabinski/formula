@@ -1,28 +1,432 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<h1 class="text-2xl font-semibold mb-6">Financial Entries</h1>
+<h1 class="text-2xl font-semibold mb-6">Personal Finance</h1>
 
-<form method="get" class="mb-6">
+<div class="mb-4">
+    <a href="{% url 'monthly_items' %}" class="underline text-sm">Manage Monthly Income/Expense Items</a>
+  
+</div>
+
+<form method="get" class="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
     <div class="flex items-center space-x-2">
-        <input type="text" name="search" value="{{ search_query }}" class="flex-1 p-2 border border-input rounded-l-md focus:outline-none focus:ring-2 focus:ring-primary-foreground" placeholder="Search financial entries" />
-        <button type="submit" class="px-4 py-2 bg-secondary text-secondary-foreground rounded-r-md hover:bg-secondary-foreground hover:text-secondary">Search</button>
+        <label class="w-24 text-sm">Search</label>
+        <input type="text" name="search" value="{{ search_query }}" class="flex-1 p-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary-foreground" placeholder="category or description" />
     </div>
+    <div class="flex items-center space-x-2">
+        <label class="w-24 text-sm">Category</label>
+        <select name="category" class="flex-1 p-2 border border-input rounded-md">
+            <option value="">All</option>
+            {% for c in categories %}
+            <option value="{{ c }}" {% if c == category_selected %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="flex items-center space-x-2">
+        <label class="w-24 text-sm">Type</label>
+        <select name="type" class="flex-1 p-2 border border-input rounded-md">
+            <option value="">All</option>
+            <option value="INCOME" {% if type_selected == 'INCOME' %}selected{% endif %}>Income</option>
+            <option value="EXPENSE" {% if type_selected == 'EXPENSE' %}selected{% endif %}>Expense</option>
+        </select>
+    </div>
+    <div class="flex items-center space-x-2">
+        <label class="w-24 text-sm">Start</label>
+        <input type="date" name="start" value="{{ start }}" class="flex-1 p-2 border border-input rounded-md" />
+    </div>
+    <div class="flex items-center space-x-2">
+        <label class="w-24 text-sm">End</label>
+        <input type="date" name="end" value="{{ end }}" class="flex-1 p-2 border border-input rounded-md" />
+    </div>
+    <div class="flex items-center space-x-2">
+        <label class="w-24 text-sm">Min</label>
+        <input type="number" step="0.01" name="min" value="{{ min }}" class="flex-1 p-2 border border-input rounded-md" />
+    </div>
+    <div class="flex items-center space-x-2">
+        <label class="w-24 text-sm">Max</label>
+        <input type="number" step="0.01" name="max" value="{{ max }}" class="flex-1 p-2 border border-input rounded-md" />
+    </div>
+    <div class="md:col-span-2 lg:col-span-3 flex items-center justify-end">
+        <button type="submit" class="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary-foreground hover:text-secondary">Apply</button>
+        {% if search_query or category_selected or type_selected or start or end or min or max %}
+        <a href="?" class="ml-3 underline text-sm">Reset</a>
+        {% endif %}
+        <a href="?search={{ search_query }}&category={{ category_selected }}&type={{ type_selected }}&start={{ start }}&end={{ end }}&min={{ min }}&max={{ max }}&export=csv" class="ml-4 underline text-sm">Export CSV</a>
+    </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 </form>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="rounded border border-border p-4">
+        <div class="text-sm text-muted-foreground">Income</div>
+        <div class="text-2xl font-semibold">${{ income_total|floatformat:2 }}</div>
+    </div>
+    <div class="rounded border border-border p-4">
+        <div class="text-sm text-muted-foreground">Expenses</div>
+        <div class="text-2xl font-semibold">${{ expense_total|floatformat:2 }}</div>
+    </div>
+    <div class="rounded border border-border p-4">
+        <div class="text-sm text-muted-foreground">Net</div>
+        <div class="text-2xl font-semibold">${{ net_total|floatformat:2 }}</div>
+    </div>
+    
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div class="rounded border border-border p-4">
+        <h3 class="text-sm font-medium mb-2">Monthly Income vs Expense</h3>
+        <canvas id="pfLine" height="140"></canvas>
+    </div>
+    <div class="rounded border border-border p-4">
+        <h3 class="text-sm font-medium mb-2">Expenses by Category</h3>
+        <canvas id="pfPie" height="140"></canvas>
+    </div>
+</div>
 
 <form method="post" class="mb-6">
     {% csrf_token %}
-    <div class="mb-4 space-y-2">
+    <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
         {{ form.as_p }}
     </div>
     <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">Add Entry</button>
+    
 </form>
 
 <table class="min-w-full divide-y divide-border mb-6">
      <thead>
         <tr class="bg-secondary">
-            <th class="px-4 py-2 text-left text-secondary-foreground">Date</th>
+            <th class="px-4 py-2 text-left text-secondary-foreground">Category</th>
+            <th class="px-4 py-2 text-left text-secondary-foreground">Type</th>
             <th class="px-4 py-2 text-left text-secondary-foreground">Amount</th>
+            <th class="px-4 py-2 text-left text-secondary-foreground">Date</th>
             <th class="px-4 py-2 text-left text-secondary-foreground">Description</th>
             <th class="px-4 py-2 text-left text-secondary-foreground">Actions</th>
         </tr>
@@ -30,8 +434,10 @@
      <tbody>
         {% for entry in page_obj %}
         <tr class="even:bg-muted">
+            <td class="px-4 py-2">{{ entry.category }}</td>
+            <td class="px-4 py-2">{{ entry.type }}</td>
+            <td class="px-4 py-2">${{ entry.amount }}</td>
             <td class="px-4 py-2">{{ entry.date }}</td>
-            <td class="px-4 py-2">{{ entry.amount }}</td>
             <td class="px-4 py-2">{{ entry.description }}</td>
             <td class="px-4 py-2 space-x-2">
                 <a href="{% url 'edit_financial_entry' entry.id %}" class="px-2 py-1 bg-accent text-accent-foreground rounded hover:bg-accent-foreground hover:text-accent">Edit</a>
@@ -61,4 +467,46 @@
         {% endif %}
     </ul>
 </nav>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+<script>
+(function() {
+    const months = JSON.parse('{{ months_json|escapejs }}' || '[]');
+    const income = JSON.parse('{{ income_points_json|escapejs }}' || '[]');
+    const expense = JSON.parse('{{ expense_points_json|escapejs }}' || '[]');
+    function makeLine() {
+        const el = document.getElementById('pfLine');
+        if (!el || !window.Chart) return;
+        const ctx = el.getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [
+                    { label: 'Income', data: income, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.15)', tension: 0.3 },
+                    { label: 'Expense', data: expense, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.15)', tension: 0.3 }
+                ]
+            },
+            options: { plugins: { legend: { display: true } }, responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    }
+    const catLabels = JSON.parse('{{ expense_cat_labels_json|escapejs }}' || '[]');
+    const catValues = JSON.parse('{{ expense_cat_values_json|escapejs }}' || '[]');
+    function makePie() {
+        const el = document.getElementById('pfPie');
+        if (!el || !window.Chart) return;
+        const pctx = el.getContext('2d');
+        new Chart(pctx, {
+            type: 'doughnut',
+            data: { labels: catLabels, datasets: [{ data: catValues, backgroundColor: ['#f87171','#fb923c','#fbbf24','#34d399','#60a5fa','#a78bfa','#f472b6','#94a3b8'] }] },
+            options: { plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(function(){ makeLine(); makePie(); }, 0);
+    } else {
+        document.addEventListener('DOMContentLoaded', function(){ makeLine(); makePie(); });
+    }
+})();
+</script>
 {% endblock %}
