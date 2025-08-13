@@ -533,8 +533,15 @@ class PersonalRepair(models.Model):
 
 
 class PersonalFinancialEntry(models.Model):
+    TYPE_CHOICES = (
+        ("INCOME", "Income"),
+        ("EXPENSE", "Expense"),
+    )
     date = models.DateField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # Optional: category and type (like admin Finance)
+    category = models.CharField(max_length=255, blank=True, null=True)
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -576,7 +583,31 @@ class PersonalTask(models.Model):
     progress = models.PositiveIntegerField(default=0)
     ai_suggested = models.BooleanField(default=False)
     ai_details = models.JSONField(blank=True, null=True)
+    # New: estimated hours for scheduling into weekly calendar
+    estimated_hours = models.DecimalField(max_digits=6, decimal_places=2, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.title} ({self.get_status_display()})"
+
+
+# New: Personal monthly recurring income/expense items
+class PersonalMonthlyItem(models.Model):
+    TYPE_CHOICES = (
+        ("INCOME", "Income"),
+        ("EXPENSE", "Expense"),
+    )
+    title = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    category = models.CharField(max_length=255, blank=True, null=True)
+    day_of_month = models.PositiveSmallIntegerField(blank=True, null=True, help_text="Day of month this is due/received (1-31)")
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["type", "title"]
+
+    def __str__(self):
+        sign = "+" if self.type == "INCOME" else "-"
+        return f"{self.title} {sign}${self.amount}"

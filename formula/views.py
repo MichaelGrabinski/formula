@@ -16,7 +16,7 @@ from django.urls import reverse_lazy
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy as _, gettext as _gt
 from django.views.generic import FormView, RedirectView, ListView, CreateView, UpdateView, DeleteView, TemplateView
 from django.db.models import Q
 from django.db import models
@@ -26,7 +26,7 @@ from django.core.paginator import Paginator
 from django import forms as djforms
 from .models import (
     PersonalProperty, PersonalAsset, PersonalProject, PersonalRepair,
-    PersonalFinancialEntry, PersonalDocument, PersonalReport, PersonalTask
+    PersonalFinancialEntry, PersonalMonthlyItem, PersonalDocument, PersonalReport, PersonalTask
 )
 
 from formula.forms import (
@@ -43,6 +43,7 @@ from formula.forms import (
     ProjectForm,
     RepairForm,
     FinancialEntryForm,
+    MonthlyItemForm,
     DocumentForm,
     ReportForm,
     TaskForm,
@@ -50,6 +51,7 @@ from formula.forms import (
 from formula.models import Driver, FileStorage, IFTAReport, Route, Load, BusinessAsset, Finance
 from formula.sites import formula_admin_site
 from .ai import chat_with_openai, rag_chat
+from datetime import datetime, date, time
 
 
 class AdminContextMixin:
@@ -752,11 +754,11 @@ class LoadListView(AdminContextMixin, ListView):
                 continue
 
         if created:
-            messages.success(request, _("Imported %(c)s loads. Skipped %(s)s.") % {"c": created, "s": skipped})
+            messages.success(request, _gt("Imported %(c)s loads. Skipped %(s)s.") % {"c": created, "s": skipped})
         elif skipped:
-            messages.error(request, _("No loads imported. Skipped %(s)s. Check columns: load_name, description, pickup_date, delivery_date, route_name." ) % {"s": skipped})
+            messages.error(request, _gt("No loads imported. Skipped %(s)s. Check columns: load_name, description, pickup_date, delivery_date, route_name.") % {"s": skipped})
         else:
-            messages.info(request, _("Nothing to import."))
+            messages.info(request, _gt("Nothing to import."))
         return redirect('load_list')
 
     def get_queryset(self):
@@ -1421,9 +1423,86 @@ class PersonalFinancialView(PersonalBaseView):
         q = request.GET.get('search', '').strip()
         qs = PersonalFinancialEntry.objects.all().order_by('-date', '-created_at')
         if q:
-            qs = qs.filter(Q(description__icontains=q))
+            qs = qs.filter(Q(description__icontains=q) | Q(category__icontains=q))
+        # extra filters
+        category = request.GET.get('category', '').strip()
+        kind = request.GET.get('type', '').strip()
+        start = request.GET.get('start', '').strip()
+        end = request.GET.get('end', '').strip()
+        min_amt = request.GET.get('min', '').strip()
+        max_amt = request.GET.get('max', '').strip()
+        if category:
+            qs = qs.filter(category=category)
+        if kind in ("INCOME", "EXPENSE"):
+            qs = qs.filter(type=kind)
+        if start:
+            qs = qs.filter(date__gte=start)
+        if end:
+            qs = qs.filter(date__lte=end)
+        try:
+            if min_amt:
+                qs = qs.filter(amount__gte=float(min_amt))
+            if max_amt:
+                qs = qs.filter(amount__lte=float(max_amt))
+        except ValueError:
+            pass
+
+        # CSV export
+        if request.GET.get('export') == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="personal_finance.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['Category', 'Type', 'Amount', 'Date', 'Description'])
+            for f in qs:
+                writer.writerow([f.category or '', f.type or '', f.amount, f.date, (f.description or '')])
+            return response
+
+        # KPIs and charts
+        income = sum((float(f.amount) if f.amount is not None else 0) for f in qs if (f.type == 'INCOME') or (not f.type and (f.amount or 0) > 0))
+        expenses = sum((float(f.amount) if f.amount is not None else 0) for f in qs if (f.type == 'EXPENSE') or (not f.type and (f.amount or 0) < 0))
+        net = income + expenses
+        expenses_display = abs(expenses)
+        series = {}
+        expense_by_cat = {}
+        for f in qs:
+            ym = f.date.strftime('%Y-%m') if f.date else 'Unknown'
+            if ym not in series:
+                series[ym] = {'income': 0.0, 'expense': 0.0}
+            amt = abs(float(f.amount) if f.amount is not None else 0)
+            if (f.type == 'INCOME') or (not f.type and (f.amount or 0) > 0):
+                series[ym]['income'] += amt
+            else:
+                series[ym]['expense'] += amt
+                key = f.category or 'Uncategorized'
+                expense_by_cat[key] = expense_by_cat.get(key, 0.0) + amt
+        months = sorted(series.keys())
+        income_points = [series[m]['income'] for m in months]
+        expense_points = [series[m]['expense'] for m in months]
+
         page = Paginator(qs, 10).get_page(request.GET.get('page'))
-        ctx = self.get_context_data(form=FinancialEntryForm(), page_obj=page, search_query=q)
+        categories = list(
+            PersonalFinancialEntry.objects.exclude(category__isnull=True).exclude(category__exact="").values_list('category', flat=True).distinct().order_by('category')
+        )
+        ctx = self.get_context_data(
+            form=FinancialEntryForm(),
+            page_obj=page,
+            search_query=q,
+            income_total=income,
+            expense_total=expenses_display,
+            net_total=net,
+            months_json=json.dumps(months),
+            income_points_json=json.dumps(income_points),
+            expense_points_json=json.dumps(expense_points),
+            expense_cat_labels_json=json.dumps(list(expense_by_cat.keys())),
+            expense_cat_values_json=json.dumps(list(expense_by_cat.values())),
+            categories=categories,
+            category_selected=category,
+            type_selected=kind,
+            start=start,
+            end=end,
+            min=min_amt,
+            max=max_amt,
+        )
         return self.render_to_response(ctx)
 
     def post(self, request, *args, **kwargs):
@@ -1456,6 +1535,61 @@ class PersonalFinancialDeleteView(PersonalBaseView):
         obj = get_object_or_404(PersonalFinancialEntry, pk=pk)
         obj.delete()
         return redirect('financial')
+
+
+# New: Monthly Items subpage
+class PersonalMonthlyItemsView(PersonalBaseView):
+    template_name = 'monthly_items.html'
+
+    def get(self, request, *args, **kwargs):
+        q = request.GET.get('search', '').strip()
+        kind = request.GET.get('type', '').strip()
+        qs = PersonalMonthlyItem.objects.all().order_by('type', 'title')
+        if q:
+            qs = qs.filter(Q(title__icontains=q) | Q(category__icontains=q) | Q(notes__icontains=q))
+        if kind in ("INCOME", "EXPENSE"):
+            qs = qs.filter(type=kind)
+        income_total = sum(float(x.amount or 0) for x in qs if x.type == 'INCOME')
+        expense_total = sum(float(x.amount or 0) for x in qs if x.type == 'EXPENSE')
+        net = income_total - expense_total
+        page = Paginator(qs, 20).get_page(request.GET.get('page'))
+        ctx = self.get_context_data(
+            form=MonthlyItemForm(), page_obj=page, search_query=q,
+            type_selected=kind, income_total=income_total, expense_total=expense_total, net_total=net,
+        )
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        form = MonthlyItemForm(request.POST)
+        if form.is_valid():
+            form.save()
+        return redirect('monthly_items')
+
+
+class PersonalMonthlyItemEditView(PersonalBaseView):
+    template_name = 'monthly_items.html'
+
+    def get(self, request, pk: int, *args, **kwargs):
+        obj = get_object_or_404(PersonalMonthlyItem, pk=pk)
+        q = request.GET.get('search', '').strip()
+        kind = request.GET.get('type', '').strip()
+        page = Paginator(PersonalMonthlyItem.objects.all().order_by('type', 'title'), 20).get_page(request.GET.get('page'))
+        ctx = self.get_context_data(form=MonthlyItemForm(instance=obj), page_obj=page, search_query=q, type_selected=kind, edit_item=True)
+        return self.render_to_response(ctx)
+
+    def post(self, request, pk: int, *args, **kwargs):
+        obj = get_object_or_404(PersonalMonthlyItem, pk=pk)
+        form = MonthlyItemForm(request.POST, instance=obj)
+        if form.is_valid():
+            form.save()
+        return redirect('monthly_items')
+
+
+class PersonalMonthlyItemDeleteView(PersonalBaseView):
+    def get(self, request, pk: int, *args, **kwargs):
+        obj = get_object_or_404(PersonalMonthlyItem, pk=pk)
+        obj.delete()
+        return redirect('monthly_items')
 
 
 class PersonalDocumentsView(PersonalBaseView):
@@ -2029,6 +2163,189 @@ class PersonalProjectsView(PersonalBaseView):
         if form.is_valid():
             form.save()
         return redirect('projects')
+
+
+# New: Project tasks scheduler subpage
+class ProjectSchedulerView(PersonalBaseView):
+    template_name = 'project_scheduler.html'
+
+    def get(self, request, *args, **kwargs):
+        # Inputs: optional project filter, weekly open window settings
+        pid = request.GET.get('project')
+        start_week = request.GET.get('week')  # ISO date for Monday
+        open_start = request.GET.get('open_start', '18:00')  # HH:MM
+        open_end = request.GET.get('open_end', '22:00')
+        # Load tasks (unscheduled first). Require estimated_hours to be set.
+        tasks = PersonalTask.objects.all().order_by('-priority' if hasattr(PersonalTask, 'priority') else 'created_at')
+        if pid:
+            tasks = tasks.filter(project_id=pid)
+        tasks = [t for t in tasks if (t.estimated_hours or 0) > 0]
+        # Compute week dates (Mon..Sun)
+        today = timezone.localdate()
+        if start_week:
+            try:
+                monday = timezone.datetime.fromisoformat(start_week).date()
+            except Exception:
+                monday = today - timedelta(days=today.weekday())
+        else:
+            monday = today - timedelta(days=today.weekday())
+        days = [monday + timedelta(days=i) for i in range(7)]
+        # Capacity and totals
+        try:
+            s_h, s_m = [int(x) for x in (open_start or '18:00').split(':')]
+            e_h, e_m = [int(x) for x in (open_end or '22:00').split(':')]
+        except Exception:
+            s_h, s_m, e_h, e_m = 18, 0, 22, 0
+        per_day_minutes = max((e_h * 60 + e_m) - (s_h * 60 + s_m), 0)
+        capacity_hours = round((per_day_minutes * len(days)) / 60.0, 2)
+        total_hours = round(sum(float(t.estimated_hours or 0) for t in tasks), 2)
+        remaining_hours = round(capacity_hours - total_hours, 2)
+        ctx = self.get_context_data(
+            tasks=tasks,
+            days=days,
+            open_start=open_start,
+            open_end=open_end,
+            total_hours=total_hours,
+            capacity_hours=capacity_hours,
+            remaining_hours=remaining_hours,
+            projects=PersonalProject.objects.all().order_by('name'),
+            selected_project=int(pid) if pid else None,
+        )
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        action = request.POST.get('action')
+        if action == 'auto_schedule':
+            return self._auto_schedule(request)
+        if action == 'export_ics':
+            return self._export_ics(request)
+        return redirect('project_scheduler')
+
+    def _auto_schedule(self, request):
+        # Greedy pack tasks (by longest first) into week open windows
+        pid = request.POST.get('project')
+        open_start = request.POST.get('open_start') or '18:00'
+        open_end = request.POST.get('open_end') or '22:00'
+        week = request.POST.get('week')
+        tasks = PersonalTask.objects.all()
+        if pid:
+            tasks = tasks.filter(project_id=pid)
+        tasks = [t for t in tasks if (t.estimated_hours or 0) > 0]
+        tasks.sort(key=lambda t: float(t.estimated_hours or 0), reverse=True)
+        today = timezone.localdate()
+        if week:
+            try:
+                monday = timezone.datetime.fromisoformat(week).date()
+            except Exception:
+                monday = today - timedelta(days=today.weekday())
+        else:
+            monday = today - timedelta(days=today.weekday())
+        # Build slots per day
+        try:
+            s_h, s_m = [int(x) for x in open_start.split(':')]
+            e_h, e_m = [int(x) for x in open_end.split(':')]
+        except Exception:
+            s_h, s_m, e_h, e_m = 18, 0, 22, 0
+        total_minutes = (e_h * 60 + e_m) - (s_h * 60 + s_m)
+        if total_minutes <= 0:
+            total_minutes = 4 * 60
+        day_slots = []
+        for i in range(7):
+            day_slots.append({'date': monday + timedelta(days=i), 'blocks': []})
+        # Allocate
+        for t in tasks:
+            minutes = int(float(t.estimated_hours) * 60)
+            # find first day with enough space; split across days if needed
+            remaining = minutes
+            for d in day_slots:
+                used = sum((b['duration'] for b in d['blocks']))
+                avail = total_minutes - used
+                if avail <= 0:
+                    continue
+                take = min(avail, remaining)
+                if take <= 0:
+                    continue
+                start_min = s_h * 60 + s_m + used
+                start_h, start_m = divmod(start_min, 60)
+                end_min = start_min + take
+                end_h, end_m = divmod(end_min, 60)
+                d['blocks'].append({
+                    'task_id': t.id,
+                    'title': t.title,
+                    'project': t.project.name if t.project_id else '',
+                    'duration': take,
+                    'start_h': start_h,
+                    'start_m': start_m,
+                    'end_h': end_h,
+                    'end_m': end_m,
+                })
+                remaining -= take
+                if remaining <= 0:
+                    break
+        # Return JSON to render schedule UI
+        data = {
+            'week_start': monday.isoformat(),
+            'open_start': open_start,
+            'open_end': open_end,
+            'days': [
+                {
+                    'date': d['date'].isoformat(),
+                    'blocks': [
+                        {
+                            'task_id': b['task_id'],
+                            'title': b['title'],
+                            'project': b['project'],
+                            'duration': b['duration'],
+                            'start': f"{b['start_h']:02d}:{b['start_m']:02d}",
+                            'end': f"{b['end_h']:02d}:{b['end_m']:02d}",
+                        }
+                        for b in d['blocks']
+                    ],
+                }
+                for d in day_slots
+            ],
+        }
+        return JsonResponse(data)
+
+    def _export_ics(self, request):
+        # Expect a JSON schedule payload from the client, return ICS file for calendar import
+        try:
+            sched_json = request.POST.get('schedule_json') or '{}'
+            sched = json.loads(sched_json)
+        except Exception:
+            return redirect('project_scheduler')
+        def dtstr(d, t):
+            return f"{d.replace('-', '')}T{t.replace(':', '')}00"
+        lines = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//Personal Projects Scheduler//EN',
+        ]
+        tz = 'UTC'  # basic; can be enhanced to local tz
+        for day in sched.get('days', []):
+            d = day.get('date')
+            for b in day.get('blocks', []):
+                start = b.get('start') or '18:00'
+                dur = int(b.get('duration') or 60)
+                # compute end time
+                sh, sm = [int(x) for x in start.split(':')]
+                end_minutes = sh * 60 + sm + dur
+                eh, em = divmod(end_minutes, 60)
+                end = f"{eh:02d}:{em:02d}"
+                title = b.get('title') or 'Task'
+                desc = b.get('project') or ''
+                lines += [
+                    'BEGIN:VEVENT',
+                    f'SUMMARY:{title}',
+                    f'DESCRIPTION:{desc}',
+                    f'DTSTART;TZID={tz}:{dtstr(d, start)}',
+                    f'DTEND;TZID={tz}:{dtstr(d, end)}',
+                    'END:VEVENT',
+                ]
+        lines.append('END:VCALENDAR')
+        resp = HttpResponse('\r\n'.join(lines), content_type='text/calendar')
+        resp['Content-Disposition'] = 'attachment; filename="project_schedule.ics"'
+        return resp
 
 
 

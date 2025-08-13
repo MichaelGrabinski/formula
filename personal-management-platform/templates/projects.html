@@ -42,6 +42,7 @@
     </form>
     <div class="flex gap-2">
       <a href="{% url 'global_calendar' %}" class="px-4 py-2 bg-accent text-accent-foreground rounded">Global Calendar</a>
+      <a href="{% url 'project_scheduler' %}" class="px-4 py-2 bg-secondary text-secondary-foreground rounded">Open Scheduler</a>
       {% if form %}
       <button onclick="document.getElementById('add-project-form').classList.toggle('hidden')" class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary-foreground hover:text-primary">Add Project</button>
       {% endif %}

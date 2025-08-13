@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">Monthly Income & Expenses</h1>
+
+<div class="mb-4">
+  <a href="{% url 'financial' %}" class="underline text-sm">Back to Personal Finance</a>
+</div>
+
+<form method="get" class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+  <div class="flex items-center space-x-2">
+    <label class="w-24 text-sm">Search</label>
+    <input type="text" name="search" value="{{ search_query }}" class="flex-1 p-2 border border-input rounded-md" placeholder="title, category, notes" />
+  </div>
+  <div class="flex items-center space-x-2">
+    <label class="w-24 text-sm">Type</label>
+    <select name="type" class="flex-1 p-2 border border-input rounded-md">
+      <option value="">All</option>
+      <option value="INCOME" {% if type_selected == 'INCOME' %}selected{% endif %}>Income</option>
+      <option value="EXPENSE" {% if type_selected == 'EXPENSE' %}selected{% endif %}>Expense</option>
+    </select>
+  </div>
+  <div class="md:col-span-2 flex items-center justify-end">
+    <button type="submit" class="px-4 py-2 bg-secondary text-secondary-foreground rounded">Apply</button>
+    {% if search_query or type_selected %}
+    <a href="?" class="ml-3 underline text-sm">Reset</a>
+    {% endif %}
+  </div>
+</form>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <div class="rounded border border-border p-4">
+    <div class="text-sm text-muted-foreground">Monthly Income</div>
+    <div class="text-2xl font-semibold">${{ income_total|floatformat:2 }}</div>
+  </div>
+  <div class="rounded border border-border p-4">
+    <div class="text-sm text-muted-foreground">Monthly Expenses</div>
+    <div class="text-2xl font-semibold">${{ expense_total|floatformat:2 }}</div>
+  </div>
+  <div class="rounded border border-border p-4">
+    <div class="text-sm text-muted-foreground">Net</div>
+    <div class="text-2xl font-semibold">${{ net_total|floatformat:2 }}</div>
+  </div>
+</div>
+
+<form method="post" class="mb-6">
+  {% csrf_token %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+    {{ form.as_p }}
+  </div>
+  <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded">Add Monthly Item</button>
+</form>
+
+<table class="min-w-full divide-y divide-border mb-6">
+  <thead>
+    <tr class="bg-secondary">
+      <th class="px-4 py-2 text-left text-secondary-foreground">Title</th>
+      <th class="px-4 py-2 text-left text-secondary-foreground">Type</th>
+      <th class="px-4 py-2 text-left text-secondary-foreground">Amount</th>
+      <th class="px-4 py-2 text-left text-secondary-foreground">Category</th>
+      <th class="px-4 py-2 text-left text-secondary-foreground">Day</th>
+      <th class="px-4 py-2 text-left text-secondary-foreground">Notes</th>
+      <th class="px-4 py-2 text-left text-secondary-foreground">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in page_obj %}
+    <tr class="even:bg-muted">
+      <td class="px-4 py-2">{{ item.title }}</td>
+      <td class="px-4 py-2">{{ item.type }}</td>
+      <td class="px-4 py-2">${{ item.amount }}</td>
+      <td class="px-4 py-2">{{ item.category }}</td>
+      <td class="px-4 py-2">{{ item.day_of_month }}</td>
+      <td class="px-4 py-2">{{ item.notes }}</td>
+      <td class="px-4 py-2 space-x-2">
+        <a href="{% url 'edit_monthly_item' item.id %}" class="px-2 py-1 bg-accent text-accent-foreground rounded">Edit</a>
+        <a href="{% url 'delete_monthly_item' item.id %}" class="px-2 py-1 bg-destructive text-destructive-foreground rounded" onclick="return confirm('Delete this item?');">Delete</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<nav class="flex justify-center">
+  <ul class="inline-flex items-center space-x-1">
+    {% if page_obj.has_previous %}
+    <li><a class="px-3 py-1 border border-border rounded" href="?page={{ page_obj.previous_page_number }}&search={{ search_query }}&type={{ type_selected }}">Previous</a></li>
+    {% endif %}
+    {% for num in page_obj.paginator.page_range %}
+    <li><a class="px-3 py-1 border border-border rounded {% if num == page_obj.number %}bg-primary text-primary-foreground{% endif %}" href="?page={{ num }}&search={{ search_query }}&type={{ type_selected }}">{{ num }}</a></li>
+    {% endfor %}
+    {% if page_obj.has_next %}
+    <li><a class="px-3 py-1 border border-border rounded" href="?page={{ page_obj.next_page_number }}&search={{ search_query }}&type={{ type_selected }}">Next</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endblock %}

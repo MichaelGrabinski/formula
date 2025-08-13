@@ -12,6 +12,7 @@ urlpatterns = [
     path("repairs/<int:pk>/delete/", views.PersonalRepairDeleteView.as_view(), name="delete_repair"),
 
     path("projects/", views.PersonalProjectsView.as_view(), name="projects"),
+    path("projects/scheduler/", views.ProjectSchedulerView.as_view(), name="project_scheduler"),
     path("projects/<int:pk>/edit/", views.PersonalProjectEditView.as_view(), name="edit_project"),
     path("projects/<int:pk>/delete/", views.PersonalProjectDeleteView.as_view(), name="delete_project"),
 
@@ -31,6 +32,10 @@ urlpatterns = [
     path("financial/", views.PersonalFinancialView.as_view(), name="financial"),
     path("financial/<int:pk>/edit/", views.PersonalFinancialEditView.as_view(), name="edit_financial_entry"),
     path("financial/<int:pk>/delete/", views.PersonalFinancialDeleteView.as_view(), name="delete_financial_entry"),
+    # Monthly recurring items subpage
+    path("financial/monthly/", views.PersonalMonthlyItemsView.as_view(), name="monthly_items"),
+    path("financial/monthly/<int:pk>/edit/", views.PersonalMonthlyItemEditView.as_view(), name="edit_monthly_item"),
+    path("financial/monthly/<int:pk>/delete/", views.PersonalMonthlyItemDeleteView.as_view(), name="delete_monthly_item"),
 
     path("documents/", views.PersonalDocumentsView.as_view(), name="documents"),
     path("documents/<int:pk>/edit/", views.PersonalDocumentEditView.as_view(), name="edit_document"),
