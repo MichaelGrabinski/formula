@@ -99,6 +99,104 @@
     const parts = value.split(`; ${name}=`);
     if (parts.length === 2) return parts.pop().split(';').shift();
   }
+  function getDayWindow(idx, form){
+    const params = new URLSearchParams(new FormData(form));
+    const sVal = form.querySelector(`input[name=day${idx}_start]`)?.value || (params.get('open_start') || '18:00');
+    const eVal = form.querySelector(`input[name=day${idx}_end]`)?.value || (params.get('open_end') || '22:00');
+    const s = sVal.split(':').map(n=>parseInt(n,10));
+    const e = eVal.split(':').map(n=>parseInt(n,10));
+    const startMin = s[0]*60 + s[1];
+    const endMin = e[0]*60 + e[1];
+    const totalMin = Math.max(endMin - startMin, 1);
+    return { sVal, eVal, startMin, endMin, totalMin };
+  }
+  function collectIntervals(z, totalMin){
+    // Return sorted non-negative intervals for existing blocks within the zone
+    const ivals = Array.from(z.children)
+      .filter(el => el.dataset && el.dataset.duration)
+      .map(el => {
+        const dur = parseInt(el.dataset.duration||'0',10) || 0;
+        let start = parseInt(el.dataset.start||'0',10) || 0;
+        start = Math.max(0, Math.min(start, Math.max(totalMin - dur, 0)));
+        return { start, end: start + dur, el };
+      })
+      .filter(x => x.end > x.start)
+      .sort((a,b)=>a.start-b.start);
+    return ivals;
+  }
+  function findPlacementGap(intervals, desiredStart, duration, totalMin){
+    // Try desired start in its current gap; else search forward gaps; else search earlier gaps; returns start or null
+    const step = 15; // minutes snapping
+    function fitsAt(s){
+      return s >= 0 && s + duration <= totalMin && intervals.every(iv => (s + duration <= iv.start) || (s >= iv.end));
+    }
+    // snap desired
+    let s0 = Math.max(0, Math.min(desiredStart, totalMin - duration));
+    s0 = Math.round(s0/step)*step;
+    if (fitsAt(s0)) return s0;
+    // Search forward by gaps
+    let cursor = 0;
+    for (const iv of intervals){
+      if (cursor <= s0 && s0 < iv.start){
+        // we already tried s0; set cursor to iv.end for next gap
+      }
+      // gap [cursor, iv.start)
+      const gapStart = Math.max(cursor, 0);
+      const gapEnd = Math.min(iv.start, totalMin);
+      const gapLen = Math.max(gapEnd - gapStart, 0);
+      if (gapLen >= duration){
+        let s = Math.max(s0, gapStart);
+        s = Math.round(s/step)*step;
+        if (s + duration <= gapEnd && fitsAt(s)) return s;
+        // try aligning to gapStart
+        s = Math.round(gapStart/step)*step;
+        if (s + duration <= gapEnd && fitsAt(s)) return s;
+      }
+      cursor = Math.max(cursor, iv.end);
+    }
+    // Last gap [cursor, totalMin)
+    if (totalMin - cursor >= duration){
+      let s = Math.max(s0, cursor);
+      s = Math.round(s/step)*step;
+      if (s + duration <= totalMin && fitsAt(s)) return s;
+      s = Math.round(cursor/step)*step;
+      if (s + duration <= totalMin && fitsAt(s)) return s;
+    }
+    // Search earlier gaps (backwards) for nearest fit
+    cursor = totalMin;
+    for (let i=intervals.length-1;i>=0;i--){
+      const iv = intervals[i];
+      const gapStart = Math.max(iv.end, 0);
+      const gapEnd = Math.min(cursor, totalMin);
+      const gapLen = Math.max(gapEnd - gapStart, 0);
+      if (gapLen >= duration){
+        let s = Math.min(s0, gapEnd - duration);
+        s = Math.round(s/step)*step;
+        if (s >= gapStart && s + duration <= gapEnd && fitsAt(s)) return s;
+        s = Math.round((gapEnd - duration)/step)*step;
+        if (s >= gapStart && fitsAt(s)) return s;
+      }
+      cursor = Math.min(cursor, iv.start);
+    }
+    // If nothing fits fully, try trimming into any gap (fallback minimal placement)
+    for (const tryStep of [duration, Math.max(15, Math.floor(duration/2)), 30, 15]){
+      cursor = 0;
+      for (const iv of intervals){
+        const gapStart = cursor;
+        const gapEnd = iv.start;
+        if (gapEnd - gapStart >= tryStep){
+          let s = Math.round(Math.max(gapStart, Math.min(s0, gapEnd - tryStep))/step)*step;
+          return s;
+        }
+        cursor = iv.end;
+      }
+      if (totalMin - cursor >= tryStep){
+        let s = Math.round(Math.max(cursor, Math.min(s0, totalMin - tryStep))/step)*step;
+        return s;
+      }
+    }
+    return null;
+  }
   function to12h(hhmm){
     const [h,m] = (hhmm||'00:00').split(':').map(x=>parseInt(x,10));
     const ampm = h>=12 ? 'PM' : 'AM';
@@ -129,24 +227,19 @@
       e.dataTransfer.setData('text/plain', JSON.stringify({ id: el.dataset.id, title: el.dataset.title, hours: parseFloat(el.dataset.hours || '0') }));
     });
   });
-  function placeBlockInZone(z, minutes, title, taskId){
+  function placeBlockAt(z, minutes, title, taskId, desiredStart){
     const idx = parseInt(z.getAttribute('data-index')||'0',10);
     const form = document.getElementById('scheduler-filters');
-    const sVal = form.querySelector(`input[name=day${idx}_start]`)?.value || (new URLSearchParams(new FormData(form)).get('open_start') || '18:00');
-    const eVal = form.querySelector(`input[name=day${idx}_end]`)?.value || (new URLSearchParams(new FormData(form)).get('open_end') || '22:00');
-    const s = sVal.split(':').map(n=>parseInt(n,10));
-    const e = eVal.split(':').map(n=>parseInt(n,10));
-    const startMin = s[0]*60 + s[1];
-    const endMin = e[0]*60 + e[1];
-    const totalMin = Math.max(endMin - startMin, 1);
-    const used = Array.from(z.children).reduce((acc, el)=> acc + (parseInt(el.dataset.duration||'0',10)||0), 0);
-    const take = Math.min(minutes, Math.max(totalMin - used, 0));
-    const offset = used;
-    const top = (offset/totalMin) * 100;
-    const height = Math.max((take/totalMin) * 100, 6);
-    const startAbs = startMin + offset;
+    const { startMin, totalMin } = getDayWindow(idx, form);
+    const duration = Math.max(0, Math.min(minutes, totalMin));
+    const intervals = collectIntervals(z, totalMin);
+    const startOffset = findPlacementGap(intervals, Math.max(0, desiredStart??0), duration, totalMin);
+    if (startOffset === null) return 0;
+    const top = (startOffset/totalMin) * 100;
+    const height = Math.max((duration/totalMin) * 100, 6);
+    const startAbs = startMin + startOffset;
     const startH = Math.floor(startAbs/60), startM = startAbs%60;
-    const endAbs = startAbs + take;
+    const endAbs = startAbs + duration;
     const endH = Math.floor(endAbs/60), endM = endAbs%60;
     const colors = ['#6ee7b7','#93c5fd','#fca5a5','#a78bfa','#fdba74','#38bdf8','#f472b6','#86efac'];
     const color = colors[(taskId||0) % colors.length];
@@ -161,21 +254,24 @@
     block.style.borderColor = color;
     block.style.boxShadow = `0 1px 2px 0 ${color}66`;
     block.dataset.id = taskId;
-    block.dataset.duration = String(take);
+    block.dataset.duration = String(duration);
+    block.dataset.start = String(startOffset);
     block.draggable = true;
     block.addEventListener('dragstart', ev => {
       window.__dragBlockEl = block;
-      ev.dataTransfer.setData('text/plain', JSON.stringify({ id: taskId, title, minutes: take, move: true }));
+      ev.dataTransfer.setData('text/plain', JSON.stringify({ id: taskId, title, minutes: duration, move: true }));
     });
     block.innerHTML = `<div class="text-xs p-1">
       <div class="font-medium truncate">${title}</div>
-      <div class="opacity-80">${to12h(`${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`)} – ${to12h(`${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`)} • ${Math.round((take/60)*10)/10}h</div>
+      <div class="opacity-80">${to12h(`${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`)} – ${to12h(`${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`)} • ${Math.round((duration/60)*10)/10}h</div>
     </div>`;
     z.appendChild(block);
-    return take;
+    return duration;
   }
   zones.forEach(z => {
-    z.addEventListener('dragover', e => e.preventDefault());
+    z.addEventListener('dragover', e => {
+      e.preventDefault();
+    });
     z.addEventListener('drop', e => {
       e.preventDefault();
       let data;
@@ -186,7 +282,15 @@
       }
       const minutes = Math.round((data.minutes ?? ((data.hours||0)*60)));
       if (!minutes || minutes <= 0) return;
-      placeBlockInZone(z, minutes, data.title || 'Task', parseInt(data.id||'0',10));
+      // Compute desired start from mouse position within zone
+      const rect = z.getBoundingClientRect();
+      const relY = Math.min(Math.max((e.clientY - rect.top), 0), rect.height);
+      const idx = parseInt(z.getAttribute('data-index')||'0',10);
+      const form = document.getElementById('scheduler-filters');
+      const { totalMin } = getDayWindow(idx, form);
+      const pct = rect.height ? (relY / rect.height) : 0;
+      const desired = Math.round((pct * totalMin) / 15) * 15; // snap to 15 minutes
+      placeBlockAt(z, minutes, data.title || 'Task', parseInt(data.id||'0',10), desired);
     });
   });
 
@@ -260,13 +364,7 @@
       const formEl = document.getElementById('scheduler-filters');
       const dayEnabled = formEl.querySelector(`input[name=day${idx}_enabled]`)?.checked ?? true;
       if (!dayEnabled) return;
-      const sVal = formEl.querySelector(`input[name=day${idx}_start]`)?.value || (new URLSearchParams(new FormData(formEl)).get('open_start') || '18:00');
-      const eVal = formEl.querySelector(`input[name=day${idx}_end]`)?.value || (new URLSearchParams(new FormData(formEl)).get('open_end') || '22:00');
-      const s = sVal.split(':').map(n=>parseInt(n,10));
-      const e = eVal.split(':').map(n=>parseInt(n,10));
-      const startMin = s[0]*60 + s[1];
-      const endMin = e[0]*60 + e[1];
-      const totalMin = Math.max(endMin - startMin, 1);
+  const { startMin, totalMin } = getDayWindow(idx, formEl);
   const colors = ['#6ee7b7','#93c5fd','#fca5a5','#a78bfa','#fdba74','#38bdf8','#f472b6','#86efac'];
       // Sort blocks by start time to avoid overlap ordering
       const sortedBlocks = [...(day.blocks || [])].sort((a,b)=>{
@@ -285,9 +383,9 @@
       z.appendChild(counter);
       let lastBottomPct = 0;
       sortedBlocks.forEach((b, i) => {
-        const startParts = (b.start||'18:00').split(':').map(n=>parseInt(n,10));
-        const startAbs = startParts[0]*60 + startParts[1];
-        const offset = Math.max(startAbs - startMin, 0);
+  const startParts = (b.start||'18:00').split(':').map(n=>parseInt(n,10));
+  const startAbs = startParts[0]*60 + startParts[1];
+  const offset = Math.max(startAbs - startMin, 0);
         let height = Math.max((b.duration/totalMin) * 100, 6);
         let top = (offset/totalMin) * 100;
         // keep a tiny vertical gap between sequential blocks
@@ -314,7 +412,8 @@
   block.style.boxShadow = `0 1px 2px 0 ${alphaBg(color,0.4)}`;
   block.style.zIndex = '10';
         block.dataset.id = b.task_id;
-        block.dataset.duration = String(b.duration);
+  block.dataset.duration = String(b.duration);
+  block.dataset.start = String(Math.max(0, Math.min(offset, Math.max(totalMin - b.duration, 0))));
         block.draggable = true;
         block.addEventListener('dragstart', ev => {
           window.__dragBlockEl = block;
