@@ -2222,16 +2222,18 @@ class ProjectSchedulerView(PersonalBaseView):
         return redirect('project_scheduler')
 
     def _auto_schedule(self, request):
-        # Greedy pack tasks (by longest first) into week open windows
+        # Greedy pack tasks (by longest first) into week open windows, honoring per-day availability
         pid = request.POST.get('project')
         open_start = request.POST.get('open_start') or '18:00'
         open_end = request.POST.get('open_end') or '22:00'
         week = request.POST.get('week')
+
         tasks = PersonalTask.objects.all()
         if pid:
             tasks = tasks.filter(project_id=pid)
         tasks = [t for t in tasks if (t.estimated_hours or 0) > 0]
         tasks.sort(key=lambda t: float(t.estimated_hours or 0), reverse=True)
+
         today = timezone.localdate()
         if week:
             try:
@@ -2240,32 +2242,56 @@ class ProjectSchedulerView(PersonalBaseView):
                 monday = today - timedelta(days=today.weekday())
         else:
             monday = today - timedelta(days=today.weekday())
+
+        # Per-day windows (fallback to global open_start/open_end)
+        def parse_hhmm(val, default):
+            try:
+                h, m = [int(x) for x in (val or default).split(':')]
+                return h, m
+            except Exception:
+                return [int(x) for x in default.split(':')]
+
+        day_windows = []
+        for i in range(7):
+            en = request.POST.get(f'day{i}_enabled')
+            enabled = True if en is None else str(en).lower() in ('1', 'true', 'on', 'yes')
+            s_val = request.POST.get(f'day{i}_start') or open_start
+            e_val = request.POST.get(f'day{i}_end') or open_end
+            s_h, s_m = parse_hhmm(s_val, open_start)
+            e_h, e_m = parse_hhmm(e_val, open_end)
+            minutes = max((e_h * 60 + e_m) - (s_h * 60 + s_m), 0)
+            if not enabled:
+                minutes = 0
+            day_windows.append({
+                'enabled': enabled and minutes > 0,
+                's_h': s_h,
+                's_m': s_m,
+                'e_h': e_h,
+                'e_m': e_m,
+                'total_minutes': minutes,
+            })
+
         # Build slots per day
-        try:
-            s_h, s_m = [int(x) for x in open_start.split(':')]
-            e_h, e_m = [int(x) for x in open_end.split(':')]
-        except Exception:
-            s_h, s_m, e_h, e_m = 18, 0, 22, 0
-        total_minutes = (e_h * 60 + e_m) - (s_h * 60 + s_m)
-        if total_minutes <= 0:
-            total_minutes = 4 * 60
         day_slots = []
         for i in range(7):
-            day_slots.append({'date': monday + timedelta(days=i), 'blocks': []})
-        # Allocate
+            day_slots.append({'date': monday + timedelta(days=i), 'blocks': [], 'window': day_windows[i]})
+
+        # Allocate greedily day by day
         for t in tasks:
-            minutes = int(float(t.estimated_hours) * 60)
-            # find first day with enough space; split across days if needed
-            remaining = minutes
+            minutes_needed = int(float(t.estimated_hours) * 60)
+            remaining = minutes_needed
             for d in day_slots:
+                w = d['window']
+                if not w['enabled']:
+                    continue
                 used = sum((b['duration'] for b in d['blocks']))
-                avail = total_minutes - used
+                avail = max(w['total_minutes'] - used, 0)
                 if avail <= 0:
                     continue
                 take = min(avail, remaining)
                 if take <= 0:
                     continue
-                start_min = s_h * 60 + s_m + used
+                start_min = w['s_h'] * 60 + w['s_m'] + used
                 start_h, start_m = divmod(start_min, 60)
                 end_min = start_min + take
                 end_h, end_m = divmod(end_min, 60)
@@ -2282,6 +2308,7 @@ class ProjectSchedulerView(PersonalBaseView):
                 remaining -= take
                 if remaining <= 0:
                     break
+
         # Return JSON to render schedule UI
         data = {
             'week_start': monday.isoformat(),

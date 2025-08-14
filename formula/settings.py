@@ -50,16 +50,21 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 10_000
 ######################################################################
 # Domains
 ######################################################################
-ALLOWED_HOSTS = environ.get("ALLOWED_HOSTS", "humanfutures.duckdns.org").split(",")
+ALLOWED_HOSTS = environ.get("ALLOWED_HOSTS", "localhost").split(",")
 
-CSRF_TRUSTED_ORIGINS = environ.get(
-    "CSRF_TRUSTED_ORIGINS", "http://localhost:7000"
-).split(",")
-
-
-CSRF_TRUSTED_ORIGINS = environ.get(
-    "CSRF_TRUSTED_ORIGINS", "https://humanfutures.duckdns.org"
-).split(",")
+origins_env = environ.get("CSRF_TRUSTED_ORIGINS", "").strip()
+if origins_env:
+    CSRF_TRUSTED_ORIGINS = origins_env.split(",")
+else:
+    # Support local dev and duckdns by default
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost",
+        "http://localhost:8000",
+        "http://127.0.0.1",
+        "http://127.0.0.1:8000",
+        "https://humanfutures.duckdns.org",
+        "http://humanfutures.duckdns.org",
+    ]
 ######################################################################
 # Apps
 ######################################################################
