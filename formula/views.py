@@ -52,6 +52,7 @@ from formula.models import Driver, FileStorage, IFTAReport, Route, Load, Busines
 from formula.sites import formula_admin_site
 from .ai import chat_with_openai, rag_chat
 from datetime import datetime, date, time
+from django.db import transaction
 
 
 class AdminContextMixin:
@@ -1804,15 +1805,18 @@ class PersonalProjectsView(PersonalBaseView):
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = 'attachment; filename="tasks_template.csv"'
             writer = csv.writer(response)
-            writer.writerow(['title', 'description', 'section', 'status', 'priority', 'assigned_to', 'start_date', 'due_date', 'progress'])
-            # Add multiple examples with different date formats
-            writer.writerow(['Install new faucet', 'Replace kitchen faucet with modern stainless steel model', 'Kitchen', 'TODO', 'HIGH', 'John', '2025-08-12', '2025-08-15', '0'])
-            writer.writerow(['Paint living room', 'Apply fresh coat of paint to living room walls', 'Living Room', 'IN_PROGRESS', 'MEDIUM', 'Sarah', '2025-08-10', '2025-08-20', '25'])
-            writer.writerow(['Fix bathroom tile', 'Repair loose tile in master bathroom', 'Bathroom', 'DONE', 'LOW', 'Mike', '2025-08-01', '2025-08-05', '100'])
-            # Add note about date formats
-            writer.writerow(['# NOTE: Dates can be in YYYY-MM-DD or MM/DD/YYYY format', '', '', '', '', '', '', '', ''])
-            writer.writerow(['# Valid status values: TODO, IN_PROGRESS, DONE', '', '', '', '', '', '', '', ''])
-            writer.writerow(['# Valid priority values: LOW, MEDIUM, HIGH (or leave blank)', '', '', '', '', '', '', '', ''])
+            # Updated template: includes per-row project assignment and estimated hours for scheduler
+            writer.writerow(['title', 'project', 'estimated_hours', 'description', 'section', 'status', 'priority', 'assigned_to', 'start_date', 'due_date', 'progress'])
+            # Add multiple examples with different date formats and projects
+            writer.writerow(['Install new faucet', 'Home Renovation', '2.5', 'Replace kitchen faucet with modern stainless steel model', 'Kitchen', 'TODO', 'HIGH', 'John', '2025-08-12', '2025-08-15', '0'])
+            writer.writerow(['Paint living room', 'Home Renovation', '4', 'Apply fresh coat of paint to living room walls', 'Living Room', 'IN_PROGRESS', 'MEDIUM', 'Sarah', '08/10/2025', '08/20/2025', '25'])
+            writer.writerow(['Fix bathroom tile', 'Bathroom Refresh', '1.5', 'Repair loose tile in master bathroom', 'Bathroom', 'DONE', 'LOW', 'Mike', '2025-08-01', '2025-08-05', '100'])
+            # Notes about accepted values and behaviors
+            writer.writerow(['# NOTE: Dates can be in YYYY-MM-DD, MM/DD/YYYY, or DD/MM/YYYY format', '', '', '', '', '', '', '', '', '', ''])
+            writer.writerow(['# Valid status: TODO, IN_PROGRESS, DONE', '', '', '', '', '', '', '', '', '', ''])
+            writer.writerow(['# Valid priority: LOW, MEDIUM, HIGH (or leave blank)', '', '', '', '', '', '', '', '', '', ''])
+            writer.writerow(['# If project does not exist, it will be created automatically', '', '', '', '', '', '', '', '', '', ''])
+            writer.writerow(['# If no project column is provided, the selected project (if any) will be used', '', '', '', '', '', '', '', '', '', ''])
             return response
 
         q = request.GET.get('search', '').strip()
@@ -2019,12 +2023,17 @@ class PersonalProjectsView(PersonalBaseView):
 
         if action == 'import_tasks_csv':
             pid = request.POST.get('project')
-            project = get_object_or_404(PersonalProject, pk=pid)
+            default_project = None
+            if pid:
+                try:
+                    default_project = get_object_or_404(PersonalProject, pk=pid)
+                except Exception:
+                    default_project = None
             f = request.FILES.get('file')
             if not f:
                 messages.error(request, 'No file selected for import.')
-                return redirect(f"{reverse_lazy('projects')}?project={pid}")
-            
+                return redirect(f"{reverse_lazy('projects')}" + (f"?project={pid}" if pid else ''))
+
             import io
             try:
                 text = f.read().decode('utf-8', errors='ignore')
@@ -2033,27 +2042,41 @@ class PersonalProjectsView(PersonalBaseView):
                     text = f.read().decode('latin-1', errors='ignore')
                 except Exception as e:
                     messages.error(request, f'Error reading file: {e}')
-                    return redirect(f"{reverse_lazy('projects')}?project={pid}")
-            
+                    return redirect(f"{reverse_lazy('projects')}" + (f"?project={pid}" if pid else ''))
+
             try:
                 reader = csv.DictReader(io.StringIO(text))
                 imported_count = 0
                 error_count = 0
+                created_projects = 0
+                from datetime import datetime as _dt
+                date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']
                 for row_num, row in enumerate(reader, start=1):
                     title = (row.get('title') or row.get('Task') or '').strip()
-                    if not title:
+                    if not title or title.startswith('#'):
                         continue
-                    if title.startswith('#'):  # Skip comment rows
-                        continue
-                    
+
+                    # Resolve project per row or fallback to default
+                    proj_name = (row.get('project') or row.get('Project') or row.get('project_name') or '').strip()
+                    project = default_project
+                    if proj_name:
+                        try:
+                            project_obj, created = PersonalProject.objects.get_or_create(name=proj_name)
+                            if created:
+                                created_projects += 1
+                            project = project_obj
+                        except Exception:
+                            project = default_project
+                    if not project:
+                        error_count += 1
+                        continue  # cannot assign without project
+
                     try:
                         t = PersonalTask(project=project, title=title)
                         t.description = (row.get('description') or row.get('Description') or '').strip() or None
                         t.section = (row.get('section') or '').strip() or None
                         st = (row.get('status') or '').strip().upper()
-                        if st not in ('TODO','IN_PROGRESS','DONE'):
-                            st = 'TODO'
-                        t.status = st
+                        t.status = st if st in ('TODO','IN_PROGRESS','DONE') else 'TODO'
                         pr = (row.get('priority') or '').strip().upper()
                         t.priority = pr if pr in ('LOW','MEDIUM','HIGH') else None
                         t.assigned_to = (row.get('assigned_to') or '').strip() or None
@@ -2061,66 +2084,96 @@ class PersonalProjectsView(PersonalBaseView):
                             t.progress = int(row.get('progress') or 0)
                         except Exception:
                             t.progress = 0
+                        # Estimated hours for scheduler
+                        hours_val = (row.get('estimated_hours') or row.get('hours') or row.get('hrs') or '').strip()
+                        try:
+                            if hours_val:
+                                t.estimated_hours = float(hours_val)
+                        except Exception:
+                            pass
+                        # Dates
                         sd = (row.get('start_date') or row.get('start') or '').strip()
                         dd = (row.get('due_date') or row.get('end') or '').strip()
-                        try:
-                            if sd:
-                                # Try different date formats
-                                try:
-                                    t.start_date = timezone.datetime.fromisoformat(sd).date()
-                                except ValueError:
+                        def parse_date(s):
+                            s = (s or '').strip()
+                            if not s:
+                                return None
+                            try:
+                                return timezone.datetime.fromisoformat(s).date()
+                            except Exception:
+                                for fmt in date_formats:
                                     try:
-                                        t.due_date = _dt.strptime(dd, '%Y-%m-%d').date()
-                                    except ValueError:
-                                        try:
-                                            t.due_date = _dt.strptime(dd, '%m/%d/%Y').date()
-                                        except ValueError:
-                                            pass
+                                        return _dt.strptime(s, fmt).date()
+                                    except Exception:
+                                        continue
+                            return None
+                        try:
+                            t.start_date = parse_date(sd) or t.start_date
+                            t.due_date = parse_date(dd) or t.due_date
                         except Exception:
                             pass
                         t.save()
                         imported_count += 1
-                    except Exception as e:
+                    except Exception:
                         error_count += 1
-                        # Skip this row and continue
                         continue
-                
+
                 if imported_count > 0:
+                    extra = f" Created {created_projects} new project(s)." if created_projects else ''
                     if error_count > 0:
-                        messages.success(request, f'Successfully imported {imported_count} tasks. {error_count} rows had errors and were skipped.')
+                        messages.success(request, f"Imported {imported_count} task(s). {error_count} row(s) skipped.{extra}")
                     else:
-                        messages.success(request, f'Successfully imported {imported_count} tasks.')
+                        messages.success(request, f"Imported {imported_count} task(s).{extra}")
                 else:
                     messages.warning(request, 'No tasks were imported. Please check your CSV format.')
             except Exception as e:
                 messages.error(request, f'Error processing CSV file: {e}')
-            
-            return redirect(f"{reverse_lazy('projects')}?project={pid}")
+
+            return redirect(f"{reverse_lazy('projects')}" + (f"?project={pid}" if pid else ''))
 
         if action == 'import_tasks_json':
             pid = request.POST.get('project')
-            project = get_object_or_404(PersonalProject, pk=pid)
+            default_project = None
+            if pid:
+                try:
+                    default_project = get_object_or_404(PersonalProject, pk=pid)
+                except Exception:
+                    default_project = None
             f = request.FILES.get('file')
             if not f:
                 messages.error(request, 'No file selected for import.')
-                return redirect(f"{reverse_lazy('projects')}?project={pid}")
-            
+                return redirect(f"{reverse_lazy('projects')}" + (f"?project={pid}" if pid else ''))
+
             import io
             try:
                 text = f.read().decode('utf-8', errors='ignore')
                 items = json.loads(text)
             except Exception as e:
                 messages.error(request, f'Error reading JSON file: {e}')
-                return redirect(f"{reverse_lazy('projects')}?project={pid}")
-            
+                return redirect(f"{reverse_lazy('projects')}" + (f"?project={pid}" if pid else ''))
+
             try:
                 if isinstance(items, dict):
                     items = items.get('tasks') or []
-                
+
                 imported_count = 0
+                created_projects = 0
                 for row in items if isinstance(items, list) else []:
                     title = (row.get('title') or '').strip()
                     if not title:
+                        continue
+                    # Per-item project, else default
+                    proj_name = (row.get('project') or row.get('Project') or row.get('project_name') or '').strip()
+                    project = default_project
+                    if proj_name:
+                        try:
+                            project_obj, created = PersonalProject.objects.get_or_create(name=proj_name)
+                            if created:
+                                created_projects += 1
+                            project = project_obj
+                        except Exception:
+                            project = default_project
+                    if not project:
                         continue
                     t = PersonalTask(project=project, title=title)
                     t.description = (row.get('description') or '').strip() or None
@@ -2136,6 +2189,15 @@ class PersonalProjectsView(PersonalBaseView):
                         t.progress = int(row.get('progress') or 0)
                     except Exception:
                         t.progress = 0
+                    # Estimated hours support
+                    try:
+                        eh = row.get('estimated_hours') if isinstance(row, dict) else None
+                        if eh is None:
+                            eh = row.get('hours')
+                        if eh is not None:
+                            t.estimated_hours = float(eh)
+                    except Exception:
+                        pass
                     sd = row.get('start_date') or row.get('start')
                     dd = row.get('due_date') or row.get('end')
                     from datetime import datetime as _dt
@@ -2148,15 +2210,16 @@ class PersonalProjectsView(PersonalBaseView):
                         pass
                     t.save()
                     imported_count += 1
-                
+
                 if imported_count > 0:
-                    messages.success(request, f'Successfully imported {imported_count} tasks from JSON.')
+                    extra = f" Created {created_projects} new project(s)." if created_projects else ''
+                    messages.success(request, f'Successfully imported {imported_count} tasks from JSON.{extra}')
                 else:
                     messages.warning(request, 'No tasks were imported. Please check your JSON format.')
             except Exception as e:
                 messages.error(request, f'Error processing JSON file: {e}')
-            
-            return redirect(f"{reverse_lazy('projects')}?project={pid}")
+
+            return redirect(f"{reverse_lazy('projects')}" + (f"?project={pid}" if pid else ''))
 
         # default: add or edit project
         form = ProjectForm(request.POST)
@@ -2200,6 +2263,11 @@ class ProjectSchedulerView(PersonalBaseView):
         capacity_hours = round((per_day_minutes * len(days)) / 60.0, 2)
         total_hours = round(sum(float(t.estimated_hours or 0) for t in tasks), 2)
         remaining_hours = round(capacity_hours - total_hours, 2)
+        # Try to load a persisted schedule for this week
+        from .models import PersonalSchedule
+        saved = PersonalSchedule.objects.filter(week_start=monday).order_by('-updated_at').first()
+        saved_schedule = saved.data if saved else None
+
         ctx = self.get_context_data(
             tasks=tasks,
             days=days,
@@ -2210,6 +2278,7 @@ class ProjectSchedulerView(PersonalBaseView):
             remaining_hours=remaining_hours,
             projects=PersonalProject.objects.all().order_by('name'),
             selected_project=int(pid) if pid else None,
+            saved_schedule=saved_schedule,
         )
         return self.render_to_response(ctx)
 
@@ -2332,6 +2401,16 @@ class ProjectSchedulerView(PersonalBaseView):
                 for d in day_slots
             ],
         }
+        # Persist schedule so it survives refresh
+        from .models import PersonalSchedule
+        try:
+            with transaction.atomic():
+                obj, _created = PersonalSchedule.objects.get_or_create(week_start=monday, defaults={'data': data})
+                if not _created:
+                    obj.data = data
+                    obj.save(update_fields=['data', 'updated_at'])
+        except Exception:
+            pass
         return JsonResponse(data)
 
     def _export_ics(self, request):

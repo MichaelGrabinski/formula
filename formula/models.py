@@ -558,6 +558,21 @@ class PersonalDocument(models.Model):
         return self.title
 
 
+# New: Persisted weekly schedule (as JSON) for the personal scheduler
+class PersonalSchedule(models.Model):
+    week_start = models.DateField(db_index=True)
+    data = models.JSONField(default=dict, encoder=PrettyJSONEncoder)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "personal_schedules"
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"Schedule {self.week_start}"
+
+
 class PersonalReport(models.Model):
     title = models.CharField(max_length=255)
     content = models.TextField(blank=True, null=True)
