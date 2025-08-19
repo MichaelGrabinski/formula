@@ -474,6 +474,48 @@
     const sched = window.__lastSchedule || { days: [] };
     document.getElementById('schedule_json').value = JSON.stringify(sched);
   });
+
+  // Restore persisted schedule if provided by server
+  try {
+    const savedEl = document.getElementById('savedScheduleJson');
+    const saved = savedEl ? JSON.parse(savedEl.textContent || 'null') : null;
+    if (saved && saved.days && Array.isArray(saved.days)) {
+      document.querySelectorAll('.dropzone').forEach(z => z.innerHTML = '');
+      let count = 0;
+      saved.days.forEach(day => {
+        const z = document.querySelector(`.dropzone[data-date="${day.date}"]`);
+        if (!z) return;
+        const idx = parseInt(z.getAttribute('data-index')||'0',10);
+        const form = document.getElementById('scheduler-filters');
+        const { startMin } = getDayWindow(idx, form);
+        // Counter badge
+        const counter = document.createElement('div');
+        counter.className = 'absolute top-1 right-1 text-[11px] px-1.5 py-0.5 rounded';
+        counter.style.background = 'rgba(0,0,0,0.35)';
+        counter.style.color = '#fff';
+        counter.style.pointerEvents = 'none';
+        counter.style.zIndex = '20';
+        counter.textContent = `${(day.blocks||[]).length} blk${(day.blocks||[]).length===1?'':'s'}`;
+        z.appendChild(counter);
+        (day.blocks||[]).forEach((b, i) => {
+          const [sh, sm] = String(b.start||'18:00').split(':').map(n=>parseInt(n,10));
+          const startAbs = sh*60 + sm;
+          const offset = Math.max(0, startAbs - startMin);
+          const duration = parseInt(b.duration||'0',10) || 0;
+          placeBlockAt(z, duration, b.title || 'Task', parseInt(b.task_id||i,10), offset);
+          count++;
+        });
+      });
+      console.log('Restored saved schedule blocks:', count);
+      // Mirror into lastSchedule so ICS export works without a new autoschedule
+      window.__lastSchedule = saved;
+    }
+  } catch (e) {
+    console.warn('No saved schedule to restore or failed to parse.', e);
+  }
   })();
 </script>
+{% if saved_schedule %}
+<script id="savedScheduleJson" type="application/json">{{ saved_schedule|json_script:"ignore" }}</script>
+{% endif %}
 {% endblock %}
