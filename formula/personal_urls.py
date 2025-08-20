@@ -13,6 +13,7 @@ urlpatterns = [
 
     path("projects/", views.PersonalProjectsView.as_view(), name="projects"),
     path("projects/scheduler/", views.ProjectSchedulerView.as_view(), name="project_scheduler"),
+    path("projects/scheduler/compact/", views.ProjectSchedulerCompactView.as_view(), name="project_scheduler_compact"),
     path("projects/<int:pk>/edit/", views.PersonalProjectEditView.as_view(), name="edit_project"),
     path("projects/<int:pk>/delete/", views.PersonalProjectDeleteView.as_view(), name="delete_project"),
 

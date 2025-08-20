@@ -516,6 +516,6 @@
   })();
 </script>
 {% if saved_schedule %}
-<script id="savedScheduleJson" type="application/json">{{ saved_schedule|json_script:"ignore" }}</script>
+{{ saved_schedule|json_script:"savedScheduleJson" }}
 {% endif %}
 {% endblock %}

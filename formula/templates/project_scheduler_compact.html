@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-semibold">This Week</h1>
+    <div class="text-sm text-muted-foreground">Window: <span id="openWindowLabel">{{ open_start }} – {{ open_end }}</span></div>
+  </div>
+
+  <div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2">
+      {% for d in days %}
+      <div class="border rounded p-2">
+        <div class="text-sm font-medium mb-2">{{ d|date:"D M j" }}</div>
+        <div class="dropzone relative border rounded h-[540px] bg-background/40 overflow-hidden" style="height:540px" data-date="{{ d|date:'Y-m-d' }}" data-index="{{ forloop.counter0 }}"></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function getCookie(name){
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+  function to12h(hhmm){
+    const [h,m] = (hhmm||'00:00').split(':').map(x=>parseInt(x,10));
+    const ampm = h>=12 ? 'PM' : 'AM';
+    const h12 = ((h+11)%12)+1;
+    return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+  }
+  function hexToRgb(hex){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+    return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) } : { r: 0, g: 0, b: 0 };
+  }
+  function alphaBg(hex, a){
+    const {r,g,b} = hexToRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+  function getDayWindow(idx){
+    const s = '{{ open_start }}' || '18:00';
+    const e = '{{ open_end }}' || '22:00';
+    const [sh,sm] = s.split(':').map(n=>parseInt(n,10));
+    const [eh,em] = e.split(':').map(n=>parseInt(n,10));
+    const startMin = sh*60+sm;
+    const endMin = eh*60+em;
+    const totalMin = Math.max(endMin-startMin,1);
+    return { startMin, totalMin };
+  }
+  function placeBlock(z, b, i){
+    const idx = parseInt(z.getAttribute('data-index')||'0',10);
+    const { startMin, totalMin } = getDayWindow(idx);
+    const [sh, sm] = String(b.start||'18:00').split(':').map(n=>parseInt(n,10));
+    const startAbs = sh*60 + sm;
+    const offset = Math.max(0, startAbs - startMin);
+    const height = Math.max((b.duration/totalMin)*100, 6);
+    const top = (offset/totalMin)*100;
+    const colors = ['#6ee7b7','#93c5fd','#fca5a5','#a78bfa','#fdba74','#38bdf8','#f472b6','#86efac'];
+    const color = colors[(b.task_id || i) % colors.length];
+    const block = document.createElement('div');
+    block.className = 'relative rounded shadow-sm ring-1';
+    block.style.position = 'absolute';
+    block.style.left = '4px';
+    block.style.right = '4px';
+    block.style.top = `${top}%`;
+    block.style.height = `${height}%`;
+    block.style.minHeight = '20px';
+    block.style.backgroundColor = alphaBg(color,0.25);
+    block.style.border = `1px solid ${color}`;
+    block.style.boxShadow = `0 1px 2px 0 ${alphaBg(color,0.4)}`;
+    block.innerHTML = `<div class="text-xs p-1"><div class="font-medium truncate">${b.title}</div><div class="opacity-80">${to12h(b.start)} – ${to12h(b.end)} • ${Math.round((b.duration/60)*10)/10}h</div></div>`;
+    z.appendChild(block);
+  }
+
+  // Render from saved schedule if present (safely parsed from JSON script tag)
+  try{
+    const savedEl = document.getElementById('savedScheduleJson');
+    const saved = savedEl ? JSON.parse(savedEl.textContent || 'null') : null;
+    if (saved && saved.days){
+      document.querySelectorAll('.dropzone').forEach(z => z.innerHTML = '');
+      saved.days.forEach(day => {
+        const z = document.querySelector(`.dropzone[data-date="${day.date}"]`);
+        if (!z) return;
+        const blocks = [...(day.blocks||[])].sort((a,b)=>{
+          const [ah,am]=(a.start||'00:00').split(':').map(n=>parseInt(n,10));
+          const [bh,bm]=(b.start||'00:00').split(':').map(n=>parseInt(n,10));
+          return (ah*60+am)-(bh*60+bm);
+        });
+        blocks.forEach((b,i)=>placeBlock(z,b,i));
+      });
+      // Mirror into global for ICS (if this page gains export later)
+      window.__lastSchedule = saved;
+    }
+  }catch(e){console.warn('No saved schedule.', e)}
+})();
+</script>
+{% if saved_schedule %}
+{{ saved_schedule|json_script:"savedScheduleJson" }}
+{% endif %}
+{% endblock %}

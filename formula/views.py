@@ -2301,7 +2301,18 @@ class ProjectSchedulerView(PersonalBaseView):
         if pid:
             tasks = tasks.filter(project_id=pid)
         tasks = [t for t in tasks if (t.estimated_hours or 0) > 0]
-        tasks.sort(key=lambda t: float(t.estimated_hours or 0), reverse=True)
+        # Prioritize by priority then by estimated hours, then recency
+        def prio_weight(t):
+            try:
+                v = (t.priority or '').upper()
+                return {'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}.get(v, 0)
+            except Exception:
+                return 0
+        tasks.sort(key=lambda t: (
+            prio_weight(t),
+            float(t.estimated_hours or 0),
+            (t.created_at or timezone.now()).timestamp(),
+        ), reverse=True)
 
         today = timezone.localdate()
         if week:
@@ -2452,6 +2463,30 @@ class ProjectSchedulerView(PersonalBaseView):
         resp = HttpResponse('\r\n'.join(lines), content_type='text/calendar')
         resp['Content-Disposition'] = 'attachment; filename="project_schedule.ics"'
         return resp
+
+
+# New: compact mobile-friendly scheduler page (blocks only)
+class ProjectSchedulerCompactView(PersonalBaseView):
+    template_name = 'project_scheduler_compact.html'
+
+    def get(self, request, *args, **kwargs):
+        # Reuse same context building as main scheduler
+        open_start = request.GET.get('open_start', '18:00')
+        open_end = request.GET.get('open_end', '22:00')
+        today = timezone.localdate()
+        monday = today - timedelta(days=today.weekday())
+        days = [monday + timedelta(days=i) for i in range(7)]
+        # Load persisted schedule if any
+        from .models import PersonalSchedule
+        saved = PersonalSchedule.objects.filter(week_start=monday).order_by('-updated_at').first()
+        saved_schedule = saved.data if saved else None
+        ctx = self.get_context_data(
+            days=days,
+            open_start=open_start,
+            open_end=open_end,
+            saved_schedule=saved_schedule,
+        )
+        return self.render_to_response(ctx)
 
 
 
