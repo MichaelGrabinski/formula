@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Upload Assignment</h1>
+<form method="post" enctype="multipart/form-data" class="space-y-4">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="px-4 py-2 rounded bg-primary text-primary-foreground">Upload & Evaluate</button>
+</form>
+<p class="mt-6 text-sm text-muted-foreground">Supported: plain text; title auto-detected from first line or filename.</p>
+{% endblock %}

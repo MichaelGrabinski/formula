@@ -1,4 +1,7 @@
 import random
+import os
+import re
+from typing import Tuple
 
 from django.conf import settings
 from django.urls import reverse_lazy
@@ -71,9 +74,31 @@ class Step:
 
 # assignments/utils/prompt_builder.py
 from textwrap import indent
-from .prompts import PROMPT_TEMPLATE, FORCE_IMPERFECT, FEW_SHOTS
-from .style import STYLE_GUIDE
-from .rubrics import RUBRICS
+
+# --- Assignment ingestion helpers ---
+def extract_title_and_text(data: bytes, original_name: str) -> Tuple[str, str]:
+    """Very lightweight extractor:
+    - For .txt: first non-empty line as title, rest as body.
+    - For others (fallback): treat entire decoded text as body; title from filename before first dot/underscore.
+    """
+    try:
+        text = data.decode('utf-8', errors='replace')
+    except Exception:
+        text = ''
+    name_root = os.path.basename(original_name)
+    title_guess = re.split(r'[._]', name_root, 1)[0].strip() or 'Untitled'
+    if original_name.lower().endswith('.txt'):
+        lines = [l.strip() for l in text.splitlines()]
+        first = ''
+        body_start = 0
+        for i,l in enumerate(lines):
+            if l:
+                first = l
+                body_start = i+1
+                break
+        body = '\n'.join(lines[body_start:]).strip()
+        return (first or title_guess, body)
+    return (title_guess, text.strip())
 
 def build_rubric_block(task: str) -> str:
     rb = RUBRICS.get(task, {})
@@ -94,7 +119,6 @@ def second_pass_prompt(prev_output_text: str) -> str:
 
 
 # assignments/utils/task_match.py
-from .rubrics import RUBRICS
 
 def detect_task_from_title(title: str) -> str:
     if not title:
@@ -108,7 +132,6 @@ def detect_task_from_title(title: str) -> str:
 
 
 # assignments/services/openai_client.py
-import os
 from typing import Dict, Any, List
 from openai import OpenAI
 
@@ -279,6 +302,11 @@ WRITING RULES
 
 
 
+
+__all__ = [
+    'build_rubric_block','first_pass_prompt','second_pass_prompt','detect_task_from_title',
+    'extract_title_and_text','run_o3_structured','sanitize_payload','sanitize_sentence','RUBRICS'
+]
 
 # assignments/utils/rubrics.py
 RUBRICS = {

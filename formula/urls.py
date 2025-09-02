@@ -13,6 +13,9 @@ urlpatterns = (
         path("__debug__", include("debug_toolbar.urls")),
         path("ai/", views.AIAssistantView.as_view(), name="ai_assistant"),
         path("personal/", include("formula.personal_urls")),
+    # Assignments evaluation tool
+    path("assignments/upload/", views.upload_view, name="assignments_upload"),
+    path("assignments/<int:pk>/", views.detail_view, name="assignments_detail"),
     ]
     + i18n_patterns(
         path("admin/", formula_admin_site.urls),

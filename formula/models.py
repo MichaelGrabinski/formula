@@ -201,6 +201,49 @@ class Driver(AuditedModel):
         return None
 
 
+# =============================
+# Assignments evaluation models
+# =============================
+class Upload(models.Model):
+    file = models.FileField(upload_to='assignments/')
+    original_name = models.CharField(max_length=255)
+    detected_title = models.CharField(max_length=500, blank=True, default='')
+    extracted_text = models.TextField(blank=True, default='')
+    assignment_type = models.CharField(max_length=120, blank=True, default='')
+    status = models.CharField(max_length=40, blank=True, default='uploaded')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'assign_uploads'
+        ordering = ['-id']
+
+    def __str__(self):  # pragma: no cover
+        return self.original_name
+
+
+class RunResult(models.Model):
+    upload = models.ForeignKey(Upload, related_name='runs', on_delete=models.CASCADE)
+    step_name = models.CharField(max_length=100)
+    prompt = models.TextField()
+    output_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'assign_run_results'
+        ordering = ['id']
+
+
+class ChatTurn(models.Model):
+    upload = models.ForeignKey(Upload, related_name='chat_turns', on_delete=models.CASCADE)
+    role = models.CharField(max_length=20)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'assign_chat_turns'
+        ordering = ['id']
+
+
 class DriverWithFilters(Driver):
     history = HistoricalRecords()
 
