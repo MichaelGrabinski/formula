@@ -2489,9 +2489,6 @@ class ProjectSchedulerCompactView(PersonalBaseView):
         return self.render_to_response(ctx)
 
 
-
-
-
 # New: Personal section root dashboard
 class PersonalDashboardView(PersonalBaseView):
     template_name = 'dashboard.html'
@@ -2766,110 +2763,108 @@ def update_goal_amount(request, pk: int):
 
 
 
-# assignments/views.py
-from django.shortcuts import render, redirect, get_object_or_404
-from django.urls import reverse
-from django.views.decorators.http import require_http_methods
-from django.db import transaction
+# assignments/views.py (temporarily guarded to avoid ImportError when models/forms not present)
+try:
+    from django.shortcuts import render, redirect, get_object_or_404  # noqa: F401
+    from django.urls import reverse  # noqa: F401
+    from django.views.decorators.http import require_http_methods  # noqa: F401
+    from django.db import transaction  # noqa: F401
 
-from .forms import UploadForm
-from .models import Upload, RunResult, ChatTurn
-from .utils.extract_text import extract_title_and_text
-from .utils.task_match import detect_task_from_title
-from .utils.prompt_builder import first_pass_prompt, second_pass_prompt
-from .utils.sanitize import sanitize_payload
-from .services.openai_client import run_o3_structured
-from .utils.rubrics import RUBRICS
+    from .forms import UploadForm  # noqa: F401
+    from .models import Upload, RunResult, ChatTurn  # type: ignore
+    from .utils.extract_text import extract_title_and_text  # noqa: F401
+    from .utils.task_match import detect_task_from_title  # noqa: F401
+    from .utils.prompt_builder import first_pass_prompt, second_pass_prompt  # noqa: F401
+    from .utils.sanitize import sanitize_payload  # noqa: F401
+    from .services.openai_client import run_o3_structured  # noqa: F401
+    from .utils.rubrics import RUBRICS  # noqa: F401
 
-import json
+    import json  # noqa: F401
 
-@require_http_methods(["GET", "POST"])
-def upload_view(request):
-    if request.method == "GET":
-        return render(request, "assignments/upload.html", {"form": UploadForm()})
+    @require_http_methods(["GET", "POST"])
+    def upload_view(request):  # noqa: D401
+        if request.method == "GET":
+            return render(request, "assignments/upload.html", {"form": UploadForm()})
 
-    form = UploadForm(request.POST, request.FILES)
-    if not form.is_valid():
-        return render(request, "assignments/upload.html", {"form": form})
+        form = UploadForm(request.POST, request.FILES)
+        if not form.is_valid():
+            return render(request, "assignments/upload.html", {"form": form})
 
-    f = form.cleaned_data["file"]
-    data = f.read()
-    title, text = extract_title_and_text(data, f.name)
-    task = detect_task_from_title(title) or detect_task_from_title(f.name) or ""
+        f = form.cleaned_data["file"]
+        data = f.read()
+        title, text = extract_title_and_text(data, f.name)
+        task = detect_task_from_title(title) or detect_task_from_title(f.name) or ""
 
-    with transaction.atomic():
-        up = Upload.objects.create(
-            file=f,
-            original_name=f.name,
-            detected_title=title,
-            extracted_text=text,
-            assignment_type=task,
-            status="extracted",
+        with transaction.atomic():
+            up = Upload.objects.create(
+                file=f,
+                original_name=f.name,
+                detected_title=title,
+                extracted_text=text,
+                assignment_type=task,
+                status="extracted",
+            )
+
+            rubric_known = task in RUBRICS
+            prompt1 = first_pass_prompt(task if rubric_known else "", text)
+            ChatTurn.objects.create(upload=up, role="system", content="You are a meticulous academic assistant.")
+            ChatTurn.objects.create(upload=up, role="user", content=prompt1[:4000])
+            resp1 = run_o3_structured(system="Follow the style strictly.", prompt=prompt1)
+            parsed1 = sanitize_payload(resp1["parsed"]) if isinstance(resp1, dict) else {}
+            from .models import RunResult as _RunResult  # local import to avoid potential circular
+            _RunResult.objects.create(
+                upload=up, step_name="rubric_eval", prompt=prompt1,
+                output_text=json.dumps(parsed1, ensure_ascii=False, indent=2)
+            )
+            ChatTurn.objects.create(upload=up, role="assistant", content=json.dumps(parsed1, ensure_ascii=False))
+
+            # Render a flat text view of items for chaining to pass 2
+            flat1 = "\n".join([f"{it['label']}: {it['comment']}" for it in parsed1.get("items", [])]) + \
+                    ("\n\nSYNTHESIS: " + (parsed1.get("synthesis") or ""))
+
+            # === Second pass (force 2–3 'needs improvement') ===
+            prompt2 = second_pass_prompt(flat1)
+            ChatTurn.objects.create(upload=up, role="user", content=prompt2[:4000])
+
+            resp2 = run_o3_structured(system="Follow the style strictly.", prompt=prompt2)
+            parsed2 = sanitize_payload(resp2["parsed"]) if isinstance(resp2, dict) else {}
+            _RunResult.objects.create(
+                upload=up, step_name="force_imperfect", prompt=prompt2,
+                output_text=json.dumps(parsed2, ensure_ascii=False, indent=2)
+            )
+            ChatTurn.objects.create(upload=up, role="assistant", content=json.dumps(parsed2, ensure_ascii=False))
+
+            up.status = "complete"
+            up.save(update_fields=["status"])
+        return redirect(reverse("assignments:detail", args=[up.id]))
+
+    def detail_view(request, pk: int):  # noqa: D401
+        up = get_object_or_404(Upload, pk=pk)
+        final = up.runs.order_by("-id").first()
+        final_items, final_imperfect, final_syn = [], [], ""
+        if final:
+            try:
+                payload = json.loads(final.output_text)
+                final_items = payload.get("items", [])
+                final_imperfect = payload.get("needs_improvement", [])
+                final_syn = payload.get("synthesis", "")
+            except Exception:
+                pass
+        return render(
+            request,
+            "assignments/detail.html",
+            {
+                "upload": up,
+                "final_items": final_items,
+                "needs_improvement": set(final_imperfect or []),
+                "synthesis": final_syn,
+                "runs": up.runs.order_by("id"),
+                "chat": up.chat_turns.order_by("id"),
+            },
         )
-
-        # Guardrail: if no task matched, keep default behavior (will still evaluate using empty rubric → empty set)
-        rubric_known = task in RUBRICS
-
-        # === First pass ===
-        prompt1 = first_pass_prompt(task if rubric_known else "", text)
-        ChatTurn.objects.create(upload=up, role="system", content="You are a meticulous academic assistant.")
-        ChatTurn.objects.create(upload=up, role="user", content=prompt1[:4000])
-
-        resp1 = run_o3_structured(system="Follow the style strictly.", prompt=prompt1)
-        parsed1 = sanitize_payload(resp1["parsed"])
-
-        RunResult.objects.create(
-            upload=up, step_name="rubric_eval", prompt=prompt1,
-            output_text=json.dumps(parsed1, ensure_ascii=False, indent=2)
-        )
-        ChatTurn.objects.create(upload=up, role="assistant", content=json.dumps(parsed1, ensure_ascii=False))
-
-        # Render a flat text view of items for chaining to pass 2
-        flat1 = "\n".join([f"{it['label']}: {it['comment']}" for it in parsed1.get("items", [])]) + \
-                ("\n\nSYNTHESIS: " + (parsed1.get("synthesis") or ""))
-
-        # === Second pass (force 2–3 'needs improvement') ===
-        prompt2 = second_pass_prompt(flat1)
-        ChatTurn.objects.create(upload=up, role="user", content=prompt2[:4000])
-
-        resp2 = run_o3_structured(system="Follow the style strictly.", prompt=prompt2)
-        parsed2 = sanitize_payload(resp2["parsed"])
-
-        RunResult.objects.create(
-            upload=up, step_name="force_imperfect", prompt=prompt2,
-            output_text=json.dumps(parsed2, ensure_ascii=False, indent=2)
-        )
-        ChatTurn.objects.create(upload=up, role="assistant", content=json.dumps(parsed2, ensure_ascii=False))
-
-        up.status = "complete"
-        up.save()
-
-    return redirect(reverse("assignments:detail", args=[up.id]))
-
-def detail_view(request, pk: int):
-    up = get_object_or_404(Upload, pk=pk)
-    final = up.runs.order_by("-id").first()
-
-    # Try to show nice structured output if available
-    final_items, final_imperfect, final_syn = [], [], ""
-    if final:
-        try:
-            payload = json.loads(final.output_text)
-            final_items = payload.get("items", [])
-            final_imperfect = payload.get("needs_improvement", [])
-            final_syn = payload.get("synthesis", "")
-        except Exception:
-            pass
-
-    return render(
-        request,
-        "assignments/detail.html",
-        {
-            "upload": up,
-            "final_items": final_items,
-            "needs_improvement": set(final_imperfect or []),
-            "synthesis": final_syn,
-            "runs": up.runs.order_by("id"),
-            "chat": up.chat_turns.order_by("id"),
-        },
-    )
+except Exception as _assignments_err:  # Fallback stubs so the site can start
+    from django.http import HttpResponseNotFound  # noqa: F401
+    def upload_view(request):  # noqa: D401
+        return HttpResponseNotFound(f"Assignments feature disabled: {_assignments_err}")
+    def detail_view(request, pk: int):  # noqa: D401
+        return HttpResponseNotFound("Assignments feature disabled.")

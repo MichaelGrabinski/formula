@@ -447,3 +447,8 @@ class MonthlyItemForm(forms.ModelForm):
             "day_of_month": forms.NumberInput(attrs={"min": "1", "max": "31"}),
             "notes": forms.Textarea(attrs={"rows": 2}),
         }
+
+
+# Stub upload form to satisfy import in views
+class UploadForm(forms.Form):
+    file = forms.FileField(label='File')
