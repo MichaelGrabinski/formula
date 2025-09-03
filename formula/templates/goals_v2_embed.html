@@ -1,0 +1,20 @@
+{% load static vite %}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="utf-8" />
+    <title>Savings Goals V2 (React)</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- Tailwind output will be injected by vite_asset (CSS from manifest) -->
+</head>
+<body class="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
+    {{ processed_goals|json_script:"goals-bootstrap" }}
+    <div id="goals-v2-root" class="mx-auto max-w-7xl p-6 space-y-8"></div>
+    <script>
+        window.GOALS_BOOTSTRAP = JSON.parse(document.getElementById('goals-bootstrap').textContent);
+    console.log('Goals V2 embed bootstrap length:', window.GOALS_BOOTSTRAP?.length);
+    </script>
+    {% vite_asset 'src/main.tsx' %}
+</body>
+</html>

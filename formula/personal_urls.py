@@ -23,6 +23,13 @@ urlpatterns = [
 
     # Savings Goals
     path("goals/", views.SavingsGoalsView.as_view(), name="goals"),
+    path("goals/v2/", views.SavingsGoalsV2View.as_view(), name="goals_v2"),
+    path("goals/v2/react/", views.SavingsGoalsV2EmbedView.as_view(), name="goals_v2_embed"),
+    # Lightweight API for the embedded original goals dashboard
+    path("goals/v2/api/list", views.api_goals_list, name="goals_v2_api_list"),
+    path("goals/v2/api/add", views.api_goals_add, name="goals_v2_api_add"),
+    path("goals/v2/api/update/<int:pk>/", views.api_goals_update, name="goals_v2_api_update"),
+    path("goals/v2/api/delete/<int:pk>/", views.api_goals_delete, name="goals_v2_api_delete"),
     path("goals/reorder/", views.reorder_goals, name="goals_reorder"),
     path("goals/update-amount/<int:pk>/", views.update_goal_amount, name="goals_update_amount"),
 

@@ -17,13 +17,18 @@
       {% if final_items %}
         <ul class="space-y-3">
         {% for it in final_items %}
-          {% with need=it.label in needs_improvement %}
-          <li class="p-3 rounded border text-sm {% if need %}bg-red-50 border-red-300{% else %}bg-muted/30{% endif %}">
-            <div class="font-medium">{{ it.label }}</div>
-            <div>{{ it.comment }}</div>
-            {% if need %}<div class="mt-1 text-xs font-medium text-red-600">Needs Improvement</div>{% endif %}
-          </li>
-          {% endwith %}
+          {% if it.label in needs_improvement %}
+            <li class="p-3 rounded border text-sm bg-red-50 border-red-300">
+              <div class="font-medium">{{ it.label }}</div>
+              <div>{{ it.comment }}</div>
+              <div class="mt-1 text-xs font-medium text-red-600">Needs Improvement</div>
+            </li>
+          {% else %}
+            <li class="p-3 rounded border text-sm bg-muted/30">
+              <div class="font-medium">{{ it.label }}</div>
+              <div>{{ it.comment }}</div>
+            </li>
+          {% endif %}
         {% endfor %}
         </ul>
       {% else %}

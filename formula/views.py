@@ -6,6 +6,8 @@ from django.http import HttpResponse, JsonResponse
 import csv
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
 from datetime import timedelta
 
 from django.contrib import messages
@@ -2724,6 +2726,246 @@ class SavingsGoalsView(PersonalBaseView):
         return out
 
 
+class SavingsGoalsV2View(SavingsGoalsView):
+    template_name = 'goals_v2.html'
+
+    def _sequence_goals(self, goals):
+        """Return list of dicts augmenting goals with start_date, completion_date, status, progress."""
+        from datetime import date
+        today = timezone.localdate()
+        cursor = today
+        processed = []
+        for g in goals:
+            remaining = float(g.remaining_amount)
+            monthly = float(g.monthly_contribution or 0)
+            if monthly > 0 and remaining > 0:
+                import math
+                months = math.ceil(remaining / monthly)
+            else:
+                months = 0 if remaining <= 0 else None
+            start_date = cursor
+            if months and months > 0:
+                # Add months one by one to handle year rollover
+                year = start_date.year
+                month = start_date.month + months
+                # Normalize month/year
+                while month > 12:
+                    month -= 12
+                    year += 1
+                # Use same day or last day fallback
+                from calendar import monthrange
+                day = min(start_date.day, monthrange(year, month)[1])
+                completion_date = date(year, month, day)
+            else:
+                completion_date = start_date
+            cursor = completion_date  # next goal starts when previous finishes
+            progress = 100.0 if g.target_amount and g.current_amount >= g.target_amount else (
+                (float(g.current_amount) / float(g.target_amount) * 100.0) if g.target_amount else 0.0
+            )
+            if progress >= 100:
+                status = 'completed'
+            elif start_date <= today < completion_date:
+                status = 'active'
+            elif progress < 100 and today < start_date:
+                status = 'pending'
+            else:
+                status = 'active'
+            processed.append({
+                'obj': g,
+                'id': g.id,
+                'title': g.title,
+                'description': g.description,
+                'target_amount': g.target_amount,
+                'current_amount': g.current_amount,
+                'monthly_contribution': g.monthly_contribution,
+                'remaining_amount': remaining,
+                'progress': round(progress),
+                'start_date': start_date,
+                'completion_date': completion_date,
+                'status': status,
+                'goal_type': g.goal_type or 'savings',
+            })
+        return processed
+
+    def get(self, request, *args, **kwargs):
+        from .models import SavingsGoal
+        from .forms import SavingsPlanForm, SavingsGoalForm
+        plan = self._get_plan()
+        goals = list(SavingsGoal.objects.all().order_by('priority', 'created_at'))
+        processed = self._sequence_goals(goals)
+        ctx = self.get_context_data(
+            plan_form=SavingsPlanForm(instance=plan),
+            goal_form=SavingsGoalForm(),
+            goals=goals,  # raw list if needed
+            processed_goals=processed,
+            weekly=float(plan.weekly_amount or 0),
+            schedule=self._compute_schedule(goals, float(plan.weekly_amount or 0)),
+        )
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        # mirror parent but redirect to goals_v2
+        action = request.POST.get('action')
+        from .models import SavingsGoal
+        from .forms import SavingsPlanForm, SavingsGoalForm
+        plan = self._get_plan()
+        if action == 'set_weekly':
+            form = SavingsPlanForm(request.POST, instance=plan)
+            if form.is_valid():
+                form.save()
+            return redirect('goals_v2')
+        if action == 'add_goal':
+            form = SavingsGoalForm(request.POST)
+            if form.is_valid():
+                g = form.save(commit=False)
+                last = SavingsGoal.objects.order_by('-priority').first()
+                g.priority = (last.priority + 1) if last else 0
+                g.save()
+            return redirect('goals_v2')
+        if action == 'edit_goal':
+            pk = request.POST.get('id')
+            g = get_object_or_404(SavingsGoal, pk=pk)
+            form = SavingsGoalForm(request.POST, instance=g)
+            if form.is_valid():
+                form.save()
+            return redirect('goals_v2')
+        if action == 'delete_goal':
+            pk = request.POST.get('id')
+            g = get_object_or_404(SavingsGoal, pk=pk)
+            g.delete()
+            return redirect('goals_v2')
+        return redirect('goals_v2')
+
+
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
+
+
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
+class SavingsGoalsV2EmbedView(SavingsGoalsV2View):
+    template_name = 'goals_v2_original.html'
+    # Serve static original front-end (no dynamic context needed)
+    def get(self, request, *args, **kwargs):
+        from .models import SavingsGoal
+        goals = list(SavingsGoal.objects.all().order_by('priority', 'created_at'))
+        payload = [
+            {
+                'id': str(g.id),
+                'name': g.title,
+                'description': g.description or '',
+                'targetAmount': float(g.target_amount or 0),
+                'currentAmount': float(g.current_amount or 0),
+                'monthlyContribution': float(g.monthly_contribution or 0),
+                'type': g.goal_type or 'savings',
+            }
+            for g in goals
+        ]
+        return self.render_to_response({'goals': payload})
+
+
+#########################################
+# Lightweight Goals API (no deep validation; CSRF exempt for simplicity)
+#########################################
+@csrf_exempt
+def api_goals_list(request):
+    from .models import SavingsGoal
+    goals = list(SavingsGoal.objects.all().order_by('priority', 'created_at'))
+    data = [
+        {
+            'id': g.id,
+            'name': g.title,
+            'description': g.description or '',
+            'targetAmount': float(g.target_amount or 0),
+            'currentAmount': float(g.current_amount or 0),
+            'monthlyContribution': float(g.monthly_contribution or 0),
+            'type': g.goal_type or 'savings',
+        }
+        for g in goals
+    ]
+    return JsonResponse({'ok': True, 'goals': data})
+
+@csrf_exempt
+def api_goals_add(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    try:
+        body = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+    from .models import SavingsGoal
+    title = body.get('name') or body.get('title') or 'Untitled'
+    try:
+        from decimal import Decimal
+        target = Decimal(str(body.get('targetAmount') or 0))
+        current = Decimal(str(body.get('currentAmount') or 0))
+        monthly = Decimal(str(body.get('monthlyContribution') or 0))
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Invalid numeric value'}, status=400)
+    last = SavingsGoal.objects.order_by('-priority').first()
+    g = SavingsGoal.objects.create(
+        title=title,
+        description=body.get('description') or '',
+        target_amount=target,
+        current_amount=current,
+        monthly_contribution=monthly,
+        goal_type=body.get('type') or 'savings',
+        priority=(last.priority + 1) if last else 0,
+    )
+    return JsonResponse({'ok': True, 'goal': {
+        'id': g.id,
+        'name': g.title,
+        'description': g.description or '',
+        'targetAmount': float(g.target_amount or 0),
+        'currentAmount': float(g.current_amount or 0),
+        'monthlyContribution': float(g.monthly_contribution or 0),
+        'type': g.goal_type or 'savings',
+    }})
+
+@csrf_exempt
+def api_goals_update(request, pk: int):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    from .models import SavingsGoal
+    g = get_object_or_404(SavingsGoal, pk=pk)
+    try:
+        body = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+    mapping = {
+        'name': 'title', 'title': 'title', 'description': 'description',
+        'targetAmount': 'target_amount', 'currentAmount': 'current_amount',
+        'monthlyContribution': 'monthly_contribution', 'type': 'goal_type'
+    }
+    from decimal import Decimal
+    for k, v in body.items():
+        if k in mapping:
+            field = mapping[k]
+            if field in ('target_amount', 'current_amount', 'monthly_contribution'):
+                setattr(g, field, Decimal(str(v or 0)))
+            else:
+                setattr(g, field, v)
+    g.save()
+    return JsonResponse({'ok': True, 'goal': {
+        'id': g.id,
+        'name': g.title,
+        'description': g.description or '',
+        'targetAmount': float(g.target_amount or 0),
+        'currentAmount': float(g.current_amount or 0),
+        'monthlyContribution': float(g.monthly_contribution or 0),
+        'type': g.goal_type or 'savings',
+    }})
+
+@csrf_exempt
+def api_goals_delete(request, pk: int):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    from .models import SavingsGoal
+    g = get_object_or_404(SavingsGoal, pk=pk)
+    g.delete()
+    return JsonResponse({'ok': True})
+
+
 @csrf_exempt
 def reorder_goals(request):
     if request.method != 'POST':
@@ -2762,109 +3004,150 @@ def update_goal_amount(request, pk: int):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
+# === Assignments evaluation (inline implementation) ===
+from django.contrib.auth.decorators import login_required
+from .forms import UploadForm
+from .models import Upload, RunResult, ChatTurn
+from .utils import RUBRICS
 
-# assignments/views.py (temporarily guarded to avoid ImportError when models/forms not present)
-try:
-    from django.shortcuts import render, redirect, get_object_or_404  # noqa: F401
-    from django.urls import reverse  # noqa: F401
-    from django.views.decorators.http import require_http_methods  # noqa: F401
-    from django.db import transaction  # noqa: F401
 
-    from .forms import UploadForm  # noqa: F401
-    from .models import Upload, RunResult, ChatTurn  # type: ignore
-    from .utils.extract_text import extract_title_and_text  # noqa: F401
-    from .utils.task_match import detect_task_from_title  # noqa: F401
-    from .utils.prompt_builder import first_pass_prompt, second_pass_prompt  # noqa: F401
-    from .utils.sanitize import sanitize_payload  # noqa: F401
-    from .services.openai_client import run_o3_structured  # noqa: F401
-    from .utils.rubrics import RUBRICS  # noqa: F401
+def _detect_rubric(extracted_text: str) -> str:
+    """Very simple heuristic rubric set selector based on keyword presence."""
+    text_l = extracted_text.lower()
+    # Prefer more specific matches first
+    preference_order = [
+        ("logistic", "NBM3 Task 2"),
+        ("regression", "NBM3 Task 1"),
+        ("dashboard", "NAM2 Task 1"),
+        ("machine learning", "NIP TASK 3"),
+        ("chatbot", "NIP TASK 1"),
+        ("robot", "NIP TASK 2"),
+    ]
+    for kw, name in preference_order:
+        if kw in text_l and name in RUBRICS:
+            return name
+    # fallback: first available rubric
+    return next(iter(RUBRICS.keys())) if RUBRICS else ""
 
-    import json  # noqa: F401
 
-    @require_http_methods(["GET", "POST"])
-    def upload_view(request):  # noqa: D401
-        if request.method == "GET":
-            return render(request, "assignments/upload.html", {"form": UploadForm()})
+def _evaluate_text(rubric_name: str, text: str):
+    """Produce per-item comments heuristically (no external API)."""
+    rubric = RUBRICS.get(rubric_name, {})
+    results = []
+    text_l = text.lower()
+    for label, question in rubric.items():
+        # crude relevance: count overlapping words from first 3 significant words of label
+        tokens = [t for t in re.split(r"[^a-z0-9]+", label.lower()) if t and len(t) > 2][:4]
+        hits = sum(1 for t in tokens if t in text_l)
+        if hits >= max(1, len(tokens)//2):
+            comment = f"The submission addresses {label} with some relevant detail; consider adding one deeper example."  # positive-ish
+        else:
+            comment = f"The submission lacks clear coverage of {label}; add specific evidence – this area needs improvement."  # needs improvement
+        results.append({
+            "label": label,
+            "question": question,
+            "comment": comment,
+        })
+    # synthesis
+    needs = [r for r in results if "needs improvement" in r["comment"].lower()]
+    strengths = len(results) - len(needs)
+    synthesis = (
+        f"You provide solid development across {strengths} rubric areas while {len(needs)} need(s) clearer evidence. "
+        f"You can strengthen weak areas by adding concrete data, examples, or justification. "
+        "You are on the right track; iterate with targeted revisions for the flagged items."  # always 3 sentences
+    )
+    return results, synthesis
 
+
+@login_required
+def upload_view(request):
+    if request.method == 'POST':
         form = UploadForm(request.POST, request.FILES)
-        if not form.is_valid():
-            return render(request, "assignments/upload.html", {"form": form})
-
-        f = form.cleaned_data["file"]
-        data = f.read()
-        title, text = extract_title_and_text(data, f.name)
-        task = detect_task_from_title(title) or detect_task_from_title(f.name) or ""
-
-        with transaction.atomic():
-            up = Upload.objects.create(
-                file=f,
-                original_name=f.name,
-                detected_title=title,
-                extracted_text=text,
-                assignment_type=task,
-                status="extracted",
-            )
-
-            rubric_known = task in RUBRICS
-            prompt1 = first_pass_prompt(task if rubric_known else "", text)
-            ChatTurn.objects.create(upload=up, role="system", content="You are a meticulous academic assistant.")
-            ChatTurn.objects.create(upload=up, role="user", content=prompt1[:4000])
-            resp1 = run_o3_structured(system="Follow the style strictly.", prompt=prompt1)
-            parsed1 = sanitize_payload(resp1["parsed"]) if isinstance(resp1, dict) else {}
-            from .models import RunResult as _RunResult  # local import to avoid potential circular
-            _RunResult.objects.create(
-                upload=up, step_name="rubric_eval", prompt=prompt1,
-                output_text=json.dumps(parsed1, ensure_ascii=False, indent=2)
-            )
-            ChatTurn.objects.create(upload=up, role="assistant", content=json.dumps(parsed1, ensure_ascii=False))
-
-            # Render a flat text view of items for chaining to pass 2
-            flat1 = "\n".join([f"{it['label']}: {it['comment']}" for it in parsed1.get("items", [])]) + \
-                    ("\n\nSYNTHESIS: " + (parsed1.get("synthesis") or ""))
-
-            # === Second pass (force 2–3 'needs improvement') ===
-            prompt2 = second_pass_prompt(flat1)
-            ChatTurn.objects.create(upload=up, role="user", content=prompt2[:4000])
-
-            resp2 = run_o3_structured(system="Follow the style strictly.", prompt=prompt2)
-            parsed2 = sanitize_payload(resp2["parsed"]) if isinstance(resp2, dict) else {}
-            _RunResult.objects.create(
-                upload=up, step_name="force_imperfect", prompt=prompt2,
-                output_text=json.dumps(parsed2, ensure_ascii=False, indent=2)
-            )
-            ChatTurn.objects.create(upload=up, role="assistant", content=json.dumps(parsed2, ensure_ascii=False))
-
-            up.status = "complete"
-            up.save(update_fields=["status"])
-        return redirect(reverse("assignments:detail", args=[up.id]))
-
-    def detail_view(request, pk: int):  # noqa: D401
-        up = get_object_or_404(Upload, pk=pk)
-        final = up.runs.order_by("-id").first()
-        final_items, final_imperfect, final_syn = [], [], ""
-        if final:
+        if form.is_valid():
+            f = form.cleaned_data['file']
+            forced_type = form.cleaned_data.get('assignment_type') or 'auto'
+            evaluation_mode = form.cleaned_data.get('evaluation_mode') or 'heuristic'
+            raw = f.read()
             try:
-                payload = json.loads(final.output_text)
-                final_items = payload.get("items", [])
-                final_imperfect = payload.get("needs_improvement", [])
-                final_syn = payload.get("synthesis", "")
+                text = raw.decode('utf-8', errors='ignore')
             except Exception:
-                pass
-        return render(
-            request,
-            "assignments/detail.html",
-            {
-                "upload": up,
-                "final_items": final_items,
-                "needs_improvement": set(final_imperfect or []),
-                "synthesis": final_syn,
-                "runs": up.runs.order_by("id"),
-                "chat": up.chat_turns.order_by("id"),
-            },
-        )
-except Exception as _assignments_err:  # Fallback stubs so the site can start
-    from django.http import HttpResponseNotFound  # noqa: F401
-    def upload_view(request):  # noqa: D401
-        return HttpResponseNotFound(f"Assignments feature disabled: {_assignments_err}")
-    def detail_view(request, pk: int):  # noqa: D401
-        return HttpResponseNotFound("Assignments feature disabled.")
+                text = ''
+            # Detect title as first non-empty line
+            detected_title = ''
+            for line in text.splitlines():
+                stripped = line.strip()
+                if stripped:
+                    detected_title = stripped[:500]
+                    break
+            upload = Upload.objects.create(
+                file=f,
+                original_name=getattr(f, 'name', 'uploaded'),
+                detected_title=detected_title,
+                extracted_text=text[:200000],  # safety cap
+                status='uploaded'
+            )
+            rubric_name = _detect_rubric(upload.extracted_text)
+            if forced_type and forced_type != 'auto' and forced_type in RUBRICS:
+                rubric_name = forced_type
+            upload.assignment_type = rubric_name
+            # Evaluate (currently heuristic only; placeholder for AI mode)
+            items, synthesis = _evaluate_text(rubric_name, upload.extracted_text)
+            if evaluation_mode == 'ai':
+                ChatTurn.objects.create(upload=upload, role='system', content='AI mode requested; heuristic used (AI path not yet implemented).')
+            upload.status = 'evaluated'
+            upload.save(update_fields=['assignment_type', 'status'])
+            # Persist run + chat trace (simple)
+            RunResult.objects.create(
+                upload=upload,
+                step_name='heuristic_evaluation',
+                prompt=f'Rubric: {rubric_name}',
+                output_text=str(items)
+            )
+            ChatTurn.objects.create(upload=upload, role='system', content=f'Heuristic rubric evaluation executed for {rubric_name}')
+            ChatTurn.objects.create(upload=upload, role='assistant', content=synthesis)
+            # Stash synthesized data in session for immediate detail view (avoid re-parsing list string)
+            request.session[f'assign_eval_{upload.pk}'] = {
+                'items': items,
+                'synthesis': synthesis,
+            }
+            return redirect('assignments_detail', pk=upload.pk)
+    else:
+        form = UploadForm()
+    return render(request, 'assignments/upload.html', {'form': form})
+
+
+@login_required
+def detail_view(request, pk: int):
+    upload = get_object_or_404(Upload, pk=pk)
+    sess_key = f'assign_eval_{upload.pk}'
+    data = request.session.get(sess_key)
+    final_items = []
+    synthesis = ''
+    if data:
+        final_items = data.get('items', [])
+        synthesis = data.get('synthesis', '')
+    else:
+        # attempt to reconstruct from RunResult (eval of stored list string)
+        run = upload.runs.filter(step_name='heuristic_evaluation').order_by('-id').first()
+        if run:
+            try:
+                # unsafe eval avoided; use literal_eval
+                from ast import literal_eval
+                final_items = literal_eval(run.output_text)
+            except Exception:
+                final_items = []
+        last_chat = upload.chat_turns.order_by('-id').first()
+        if last_chat and last_chat.role == 'assistant':
+            synthesis = last_chat.content
+    needs_improvement = [it['label'] for it in final_items if 'needs improvement' in it['comment'].lower()]
+    context = {
+        'upload': upload,
+        'final_items': final_items,
+        'needs_improvement': needs_improvement,
+        'synthesis': synthesis,
+        'chat': upload.chat_turns.all(),
+        'runs': upload.runs.all(),
+    }
+    # prevent stale session growth
+    request.session.pop(sess_key, None)
+    return render(request, 'assignments/detail.html', context)

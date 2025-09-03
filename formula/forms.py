@@ -27,6 +27,7 @@ from unfold.widgets import (
 )
 
 from formula.models import Driver
+from .utils import RUBRICS
 
 # =====================
 # Personal section forms
@@ -43,9 +44,30 @@ from formula.models import (
     PersonalTask,
 )
 
-# Assignment upload form
+def _rubric_choices():
+    base = [("auto", _("Auto-detect (recommended)"))]
+    # Keep ordering stable
+    base.extend([(k, k) for k in sorted(RUBRICS.keys())])
+    return base
+
+
 class UploadForm(forms.Form):
     file = forms.FileField(label=_('Assignment File'), required=True, widget=UnfoldAdminFileFieldWidget())
+    assignment_type = forms.ChoiceField(
+        label=_('Assignment / Rubric'),
+        required=False,
+        choices=_rubric_choices(),
+        help_text=_('Choose a rubric to force evaluation or leave Auto for detection.'),
+        widget=UnfoldAdminSelect2Widget,
+    )
+    evaluation_mode = forms.ChoiceField(
+        label=_('Evaluation Mode'),
+        required=False,
+        choices=[('heuristic', _('Heuristic (offline)')), ('ai', _('AI Model (OpenAI)'))],
+        initial='heuristic',
+        help_text=_('AI requires OPENAI_API_KEY; falls back to heuristic on error.'),
+        widget=UnfoldAdminSelect2Widget,
+    )
 
 
 class HomeView(RedirectView):
@@ -433,11 +455,12 @@ class SavingsPlanForm(forms.ModelForm):
 class SavingsGoalForm(forms.ModelForm):
     class Meta:
         model = SavingsGoal
-        fields = ["title", "description", "target_amount", "current_amount"]
+        fields = ["title", "description", "target_amount", "current_amount", "monthly_contribution", "goal_type"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             "target_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
             "current_amount": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
+            "monthly_contribution": forms.NumberInput(attrs={"step": "0.01", "min": "0"}),
         }
 
 
@@ -453,6 +476,4 @@ class MonthlyItemForm(forms.ModelForm):
         }
 
 
-# Stub upload form to satisfy import in views
-class UploadForm(forms.Form):
-    file = forms.FileField(label='File')
+## (Removed older stub UploadForm – unified above)

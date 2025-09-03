@@ -519,6 +519,12 @@ class SavingsGoal(models.Model):
     description = models.TextField(blank=True, null=True)
     target_amount = models.DecimalField(max_digits=12, decimal_places=2)
     current_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    monthly_contribution = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Planned monthly contribution allocated specifically to this goal")
+    goal_type = models.CharField(max_length=20, blank=True, null=True, choices=(
+        ("debt", "Debt"),
+        ("savings", "Savings"),
+        ("investment", "Investment"),
+    ))
     priority = models.PositiveIntegerField(default=0, help_text="Lower number = higher priority")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -547,6 +553,19 @@ class SavingsGoal(models.Model):
                 return 0
             import math
             return int(math.ceil(rem / w))
+        except Exception:
+            return None
+
+    @property
+    def months_to_finish(self):
+        try:
+            if self.monthly_contribution <= 0:
+                return None
+            rem = float(self.remaining_amount)
+            if rem <= 0:
+                return 0
+            import math
+            return int(math.ceil(rem / float(self.monthly_contribution)))
         except Exception:
             return None
 

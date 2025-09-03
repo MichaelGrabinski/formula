@@ -240,7 +240,11 @@ DATETIME_INPUT_FORMATS = [
 ######################################################################
 STATIC_URL = "/static/"
 
-STATICFILES_DIRS = [BASE_DIR / "formula" / "static"]
+STATICFILES_DIRS = [
+    BASE_DIR / "formula" / "static",
+    # Include built Vite assets (frontend_v2 lives at project root)
+    BASE_DIR / "frontend_v2" / "dist",
+]
 
 STATIC_ROOT = BASE_DIR / "static"
 

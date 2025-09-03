@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% load ai_extras %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <h1 class="text-2xl font-semibold">Savings Goals V2</h1>
+  <a href="{% url 'goals' %}" class="text-sm underline">Classic View</a>
+ </div>
+
+<div class="space-y-8">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h2 class="text-xl font-semibold tracking-tight">Financial Goals Timeline</h2>
+      <p class="text-sm text-muted-foreground">Sequenced plan to financial success.</p>
+    </div>
+    <button id="add-goal-btn" class="px-3 py-2 rounded bg-primary text-primary-foreground text-sm" data-open="goal-dialog">Add New Goal</button>
+  </div>
+  <div id="goal-cards" class="flex flex-col lg:flex-row lg:items-stretch lg:space-x-6 space-y-6 lg:space-y-0">
+    {% for pg in processed_goals %}
+      {% with g=pg.obj %}
+      <div class="flex flex-col rounded-lg border bg-card text-card-foreground shadow-sm w-full lg:flex-1 relative data-[status=active]:border-primary data-[status=completed]:border-green-500" data-id="{{ g.id }}" data-status="{{ pg.status }}">
+        <div class="p-5 flex flex-col gap-4">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <h3 class="text-lg font-bold leading-tight flex items-center gap-2">
+                {% if pg.goal_type == 'debt' %}
+                  <span class="inline-block text-muted-foreground">🚗</span>
+                {% elif pg.goal_type == 'savings' %}
+                  <span class="inline-block text-muted-foreground">🏦</span>
+                {% else %}
+                  <span class="inline-block text-muted-foreground">🎯</span>
+                {% endif %}
+                {{ g.title }}
+              </h3>
+              {% if g.description %}<p class="text-sm text-muted-foreground mt-1">{{ g.description }}</p>{% endif %}
+            </div>
+            <div class="flex gap-1">
+              <button class="text-xs underline" data-edit="{{ g.id }}">Edit</button>
+              <form method="post" onsubmit="return confirm('Delete this goal?')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_goal" />
+                <input type="hidden" name="id" value="{{ g.id }}" />
+                <button class="text-xs text-destructive underline" type="submit">Del</button>
+              </form>
+            </div>
+          </div>
+          <div class="space-y-2 text-center relative">
+            <div class="absolute left-0 top-0 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-muted/50" data-status-badge>
+              {% if pg.status == 'completed' %}Completed{% elif pg.status == 'active' %}Active{% else %}Pending{% endif %}
+            </div>
+            <div class="text-3xl font-bold tracking-tight">${{ g.current_amount|floatformat:0 }}</div>
+            <div class="w-full h-3 bg-muted rounded overflow-hidden">
+              <div class="h-3 bg-primary" data-pct="{{ g.current_amount|percent:g.target_amount }}"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-muted-foreground uppercase tracking-wide px-1">
+              <span>0%</span><span class="font-semibold text-foreground">{{ g.current_amount|percent:g.target_amount }}%</span><span>100%</span>
+            </div>
+            <div class="text-xs text-muted-foreground">Target: ${{ g.target_amount }}</div>
+            <div class="text-[11px] text-muted-foreground">
+              {% if pg.status == 'completed' %}Finished {{ pg.completion_date }}
+              {% elif pg.status == 'active' %}Est. End {{ pg.completion_date }}
+              {% else %}Est. Start {{ pg.start_date }}{% endif %}
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="flex justify-between"><span class="text-muted-foreground">Remaining</span><span class="font-medium">${{ g.remaining_amount }}</span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Monthly</span><span class="font-medium">${{ g.monthly_contribution }}</span></div>
+            <div class="flex justify-between col-span-2"><span class="text-muted-foreground">Weeks Solo</span><span class="font-medium">{{ g.weeks_to_complete_alone|default:'—' }}</span></div>
+          </div>
+        </div>
+        <form method="post" class="hidden p-4 space-y-2 text-xs bg-muted/30" data-form-edit="{{ g.id }}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="edit_goal" />
+          <input type="hidden" name="id" value="{{ g.id }}" />
+          <input name="title" value="{{ g.title }}" class="w-full p-1.5 rounded border" placeholder="Title" />
+          <textarea name="description" rows="2" class="w-full p-1.5 rounded border" placeholder="Description">{{ g.description }}</textarea>
+          <div class="grid grid-cols-2 gap-2">
+            <input name="target_amount" type="number" step="0.01" min="0" value="{{ g.target_amount }}" class="p-1.5 rounded border" placeholder="Target" />
+            <input name="current_amount" type="number" step="0.01" min="0" value="{{ g.current_amount }}" class="p-1.5 rounded border" placeholder="Current" />
+            <input name="monthly_contribution" type="number" step="0.01" min="0" value="{{ g.monthly_contribution }}" class="p-1.5 rounded border col-span-2" placeholder="Monthly" />
+          </div>
+          <div class="flex gap-2">
+            <button class="px-2 py-1 rounded bg-primary text-primary-foreground" type="submit">Save</button>
+            <button type="button" class="px-2 py-1 rounded border" data-cancel-edit="{{ g.id }}">Cancel</button>
+          </div>
+        </form>
+        {% if not forloop.last %}
+          <div class="hidden lg:flex absolute right-0 top-1/2 translate-x-full -translate-y-1/2 px-2 text-gray-300 dark:text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+          </div>
+        {% endif %}
+      </div>
+      {% endwith %}
+    {% empty %}
+      <div class="text-center py-16 border-2 border-dashed rounded-lg w-full">
+        <h3 class="text-lg font-semibold">No goals yet!</h3>
+        <p class="text-muted-foreground mt-2">Click "Add New Goal" to begin.</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+  <div class="space-y-6">
+    <div class="rounded-lg border p-4 bg-card">
+      <h2 class="text-sm font-medium mb-3">Weekly Pool</h2>
+      <form method="post" class="flex gap-2 items-end text-sm">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="set_weekly" />
+        {{ plan_form.weekly_amount }}
+        <button class="px-3 py-2 rounded bg-primary text-primary-foreground" type="submit">Save</button>
+      </form>
+      <p class="mt-2 text-[11px] text-muted-foreground">Funds available each week to allocate across goals.</p>
+    </div>
+    <div class="rounded-lg border p-4 bg-card">
+      <h2 class="text-sm font-medium mb-3">Projected Schedule</h2>
+      {% if weekly <= 0 %}
+        <p class="text-xs text-muted-foreground">Set a weekly amount to see projections.</p>
+      {% else %}
+        <ol class="text-xs space-y-2 list-decimal ml-5">
+        {% for s in schedule %}
+          <li>
+            <div class="font-medium">{{ s.title }}</div>
+            <div class="text-muted-foreground">Remaining ${{ s.remaining }} • Weeks {{ s.weeks }} • ETA {% if s.eta_date %}{{ s.eta_date }}{% else %}—{% endif %}</div>
+          </li>
+        {% endfor %}
+        </ol>
+      {% endif %}
+    </div>
+    <div class="rounded-lg border p-4 bg-card" id="add-goal-form">
+      <h2 class="text-sm font-medium mb-3">Add Goal</h2>
+      <form method="post" class="grid gap-2 text-sm">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_goal" />
+        {{ goal_form.title }}
+        {{ goal_form.description }}
+        <div class="grid grid-cols-2 gap-2">{{ goal_form.target_amount }} {{ goal_form.current_amount }}</div>
+        <div>{{ goal_form.monthly_contribution }}</div>
+        <button class="px-3 py-2 rounded bg-primary text-primary-foreground" type="submit">Add</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// Inline edit toggling
+document.querySelectorAll('[data-edit]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.getAttribute('data-edit');
+    const form = document.querySelector(`[data-form-edit="${id}"]`);
+    if(form){ form.classList.toggle('hidden'); }
+  });
+});
+document.querySelectorAll('[data-cancel-edit]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.getAttribute('data-cancel-edit');
+    const form = document.querySelector(`[data-form-edit="${id}"]`);
+    if(form){ form.classList.add('hidden'); }
+  });
+});
+
+// Drag reorder (cards)
+const container = document.getElementById('goal-cards');
+let dragEl = null;
+if(container){
+  container.querySelectorAll('[data-id]').forEach(card => {
+    card.draggable = true;
+    card.addEventListener('dragstart', () => { dragEl = card; card.classList.add('opacity-50'); });
+    card.addEventListener('dragend', () => { card.classList.remove('opacity-50'); dragEl = null; });
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      const rect = card.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height/2;
+      container.insertBefore(dragEl, before ? card : card.nextSibling);
+    });
+  });
+  container.addEventListener('drop', async () => {
+    const ids = Array.from(container.querySelectorAll('[data-id]')).map(c => parseInt(c.dataset.id));
+    try{
+      await fetch('{% url "goals_reorder" %}', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids})});
+      window.location.reload();
+    }catch(e){}
+  });
+}
+</script>
+<script>
+// Set bar widths
+document.querySelectorAll('[data-pct]').forEach(el=>{
+  const v = parseInt(el.getAttribute('data-pct')||'0',10); el.style.width = Math.max(0,Math.min(100,v))+ '%';
+});
+</script>
+{% endblock %}

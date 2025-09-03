@@ -1,252 +1,82 @@
-import random
 import os
 import re
-from typing import Tuple
+from dataclasses import dataclass
+from textwrap import dedent
+from typing import Tuple, Optional, Callable, Dict, Any
 
 from django.conf import settings
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
+# Environment / admin helpers
+def environment_callback(request) -> str:
+    return getattr(settings, "APP_ENV", "dev")
 
-def environment_callback(request):
-    if settings.DEBUG:
-        return [_("Development"), "primary"]
+def badge_callback(request) -> Optional[Tuple[str, str]]:
+    env = environment_callback(request).lower()
+    mapping = {
+        "prod": (_("Production"), "bg-red-600"),
+        "production": (_("Production"), "bg-red-600"),
+        "staging": (_("Staging"), "bg-amber-500"),
+        "stage": (_("Staging"), "bg-amber-500"),
+        "test": (_("Test"), "bg-blue-500"),
+        "dev": (_("Dev"), "bg-slate-500"),
+        "development": (_("Dev"), "bg-slate-500"),
+    }
+    return mapping.get(env)
 
-    return [_("Production"), "primary"]
+def permission_callback(request) -> bool:
+    user = getattr(request, "user", None)
+    return bool(user and user.is_authenticated and user.is_staff)
 
-
-def badge_callback(request):
-    return f"{random.randint(1, 9)}"
-
-
-def permission_callback(request):
-    return True
-
-
-def driver_link_callback(request):
-    return (
-        lambda request: str(reverse_lazy("admin:formula_driver_changelist"))
-        in request.path
-        or request.path == reverse_lazy("admin:formula_driverwithfilters_changelist")
-        or request.path == reverse_lazy("admin:crispy_form")
-        or request.path == reverse_lazy("admin:crispy_formset")
+def driver_link_callback(request) -> bool:
+    path = request.path
+    targets = (
+        reverse_lazy("admin:formula_driver_changelist"),
+        reverse_lazy("admin:formula_driverwithfilters_changelist"),
+        reverse_lazy("admin:crispy_form"),
+        reverse_lazy("admin:crispy_formset"),
     )
+    return any(str(t) in path for t in targets)
 
+def driver_list_link_callback(request) -> bool:
+    path = request.path
+    base = str(reverse_lazy("admin:formula_driver_changelist"))
+    alt = str(reverse_lazy("admin:formula_driverwithfilters_changelist"))
+    return (path == base) or (base in path) or (alt in path)
 
-def driver_list_link_callback(request):
-    if request.path == reverse_lazy("admin:formula_driver_changelist"):
-        return True
-
-    if str(reverse_lazy("admin:formula_driver_changelist")) in request.path:
-        return True
-
-    if str(reverse_lazy("admin:formula_driverwithfilters_changelist")) in request.path:
-        return True
-
-    return False
-
-
-def driver_list_sublink_callback(request):
-    if str(reverse_lazy("admin:crispy_form")) in request.path:
+def driver_list_sublink_callback(request) -> bool:
+    path = request.path
+    if str(reverse_lazy("admin:crispy_form")) in path:
         return False
-
-    if str(reverse_lazy("admin:crispy_formset")) in request.path:
+    if str(reverse_lazy("admin:crispy_formset")) in path:
         return False
+    return driver_list_link_callback(request)
 
-    if request.path == reverse_lazy("admin:formula_driver_changelist"):
-        return True
-
-    if str(reverse_lazy("admin:formula_driver_changelist")) in request.path:
-        return True
-
-    return False
-
-
-# assignments/utils/prompt_router.py
-from dataclasses import dataclass
-from typing import Callable, List
+# ---------------- Assignments (prompt / rubric engine) ----------------
 
 @dataclass
 class Step:
     name: str
     prompt_fn: Callable[[str], str]
 
+STYLE_GUIDE = """
+You are an academic reviewer.
 
-# assignments/utils/prompt_builder.py
-from textwrap import indent
-
-# --- Assignment ingestion helpers ---
-def extract_title_and_text(data: bytes, original_name: str) -> Tuple[str, str]:
-    """Very lightweight extractor:
-    - For .txt: first non-empty line as title, rest as body.
-    - For others (fallback): treat entire decoded text as body; title from filename before first dot/underscore.
-    """
-    try:
-        text = data.decode('utf-8', errors='replace')
-    except Exception:
-        text = ''
-    name_root = os.path.basename(original_name)
-    title_guess = re.split(r'[._]', name_root, 1)[0].strip() or 'Untitled'
-    if original_name.lower().endswith('.txt'):
-        lines = [l.strip() for l in text.splitlines()]
-        first = ''
-        body_start = 0
-        for i,l in enumerate(lines):
-            if l:
-                first = l
-                body_start = i+1
-                break
-        body = '\n'.join(lines[body_start:]).strip()
-        return (first or title_guess, body)
-    return (title_guess, text.strip())
-
-def build_rubric_block(task: str) -> str:
-    rb = RUBRICS.get(task, {})
-    # render as "• <label>: <requirement>"
-    lines = [f"• {k}: {v}" for k, v in rb.items()]
-    return "\n".join(lines)
-
-def first_pass_prompt(task: str, submission_text: str) -> str:
-    return PROMPT_TEMPLATE.format(
-        style=STYLE_GUIDE,
-        rubric_block=build_rubric_block(task),
-        text=submission_text,
-        few_shots=FEW_SHOTS,
-    )
-
-def second_pass_prompt(prev_output_text: str) -> str:
-    return FORCE_IMPERFECT + "\n\n--- PRIOR EVALUATION ---\n" + prev_output_text
-
-
-# assignments/utils/task_match.py
-
-def detect_task_from_title(title: str) -> str:
-    if not title:
-        return ""
-    t = title.lower()
-    # simple contains match
-    for task in RUBRICS.keys():
-        if task.lower() in t:
-            return task
-    return ""  # caller can decide default/fallback
-
-
-# assignments/services/openai_client.py
-from typing import Dict, Any, List
-from openai import OpenAI
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-def _comment_schema():
-    return {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "rubric_comments",
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "label": {"type": "string"},
-                                "comment": {"type": "string"}
-                            },
-                            "required": ["label", "comment"],
-                            "additionalProperties": False
-                        },
-                        "minItems": 1
-                    },
-                    "needs_improvement": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 2
-                    },
-                    "synthesis": {"type": "string"}
-                },
-                "required": ["items", "synthesis"],
-                "additionalProperties": False
-            }
-        }
-    }
-
-def run_o3_structured(system: str, prompt: str, max_out: int = 2000) -> Dict[str, Any]:
-    resp = client.responses.create(
-        model="o3",
-        input=[{"role": "system", "content": system},
-               {"role": "user", "content": prompt}],
-        response_format=_comment_schema(),
-        temperature=0.2,
-        max_output_tokens=max_out,
-    )
-    # SDKs commonly expose parsed structured output; fall back to output_text->json if needed
-    parsed = getattr(resp, "parsed", None)
-    if parsed is None:
-        import json
-        parsed = json.loads(resp.output_text)
-    return {"parsed": parsed, "raw": resp}
-
-
-# assignments/utils/sanitize.py
-import re
-
-BANNED_PHRASES = [
-    r"\bthus meeting the requirements\b",
-    r"\bmet requirements\b",
-    r"\bmeets the rubric\b",
-    r"\btherefore\b",
-]
-CODES = r"\b(?:D\d{2,4}|[ABCDEF]\d{1,2}|C\d{1,2})\b"
-
-def sanitize_sentence(s: str) -> str:
-    s = re.sub(CODES, "", s, flags=re.IGNORECASE).strip()
-    for pat in BANNED_PHRASES:
-        s = re.sub(pat, "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\s{2,}", " ", s).strip()
-    if not s.lower().startswith("the submission"):
-        if s:
-            s = "The submission " + s[0].lower() + s[1:]
-        else:
-            s = "The submission"
-    parts = re.split(r"(?<=[.!?])\s+", s)
-    if len(parts) > 2:
-        s = " ".join(parts[:2]).strip()
-    return s
-
-def sanitize_payload(payload: dict) -> dict:
-    if not isinstance(payload, dict):
-        return payload
-    items = payload.get("items", [])
-    payload["items"] = [
-        {
-            "label": it.get("label"),
-            "comment": sanitize_sentence(it.get("comment", "") or "")
-        }
-        for it in items
-    ]
-    # synthesis: keep positive & short-ish (3 sentences expected; don't enforce here)
-    syn = payload.get("synthesis", "").strip()
-    if syn and not syn.startswith("You"):
-        # Capitalize / enforce "You" start
-        syn = "You" + syn[1:] if syn else "You "
-    payload["synthesis"] = syn
-    return payload
-
-
-# assignments/utils/prompts.py
-from textwrap import dedent
-from .style import STYLE_GUIDE
+WRITING RULES
+1) Start every comment with: "The submission".
+2) Never mention internal codes or labels (A1,B2,C3,C4 etc) inside comments.
+3) Avoid meta phrases like “thus meeting the requirements”.
+4) Neutral, precise, specific tone.
+5) Each rubric item: 1–2 sentences.
+6) After items, add a 3-sentence positive synthesis starting with "You".
+"""
 
 FEW_SHOTS = dedent(r"""
 EXAMPLES (bad → good)
 Bad: "The submission for C4 provides X and Y, thus meeting the requirements."
 Good: "The submission provides X and Y with clear evidence in sections 2–3."
-
-Bad: "The submission meets the rubric because it covers Z."
-Good: "The submission explains Z with sufficient detail, but omits supporting sources."
-
-Bad: "Therefore, the submission met requirements for analysis."
+Bad: "Therefore, the submission met requirements."
 Good: "The submission analyzes the issue and evaluates alternatives; add one counterexample."
 """)
 
@@ -254,14 +84,12 @@ PROMPT_TEMPLATE = """
 {style}
 
 EVALUATION INSTRUCTIONS
-• Evaluate and synthesize the content based on each rubric section.
-• Every comment must start with "The submission".
-• Do not mention rubric codes (e.g., A1, B2, C4) in the text of comments.
-• Assume any referenced screenshots, code snippets, or images are present.
-• Keep 1–2 sentences per item.
-• After all items, produce a 3-sentence positive synthesis that begins with "You".
+• Evaluate each rubric item with 1–2 sentences starting "The submission".
+• No rubric codes in the text.
+• Give concise, constructive feedback.
+• Finish with a 3-sentence synthesis starting with "You".
 
-RUBRIC (labels → requirement)
+RUBRIC
 {rubric_block}
 
 SUBMISSION
@@ -273,43 +101,12 @@ SUBMISSION
 """
 
 FORCE_IMPERFECT = """
-Now revise your evaluation so that at least 2–3 rubric items are marked as needing improvement,
-even if the submission appears strong. Choose fairly and give constructive, actionable notes.
-
-Retain the same style rules:
-- Start each item with "The submission"
-- Do not mention codes
-- Avoid meta-phrases like "thus meeting the requirements"
-- Keep 1–2 sentences per item
-- End with a 3-sentence positive synthesis beginning with "You"
+Revise so at least 2–3 rubric items are flagged as needing improvement even if overall strong.
+Keep all style rules (start with "The submission", no codes, concise, 3‑sentence synthesis starting with "You").
 """
 
-
-# assignments/utils/style.py
-STYLE_GUIDE = """
-You are an academic reviewer.
-
-WRITING RULES
-1) Start every comment with: "The submission".
-2) Never mention internal codes or labels in the text (e.g., D150, C1–C9, A1, B2).
-3) Do not write meta-phrases like “thus meeting the requirements”, “met requirements”,
-   “therefore it meets”, “requirements met”, or “meets the rubric”. These are implied.
-4) Keep tone neutral, precise, and specific. Avoid cheerleading or judgments.
-5) Each rubric item gets 1–2 sentences, grounded in the submission.
-6) No preambles or conclusions around the list—return only the evaluation items and the final synthesis.
-7) After all items, add a 3-sentence positive synthesis that starts with "You".
-"""
-
-
-
-
-__all__ = [
-    'build_rubric_block','first_pass_prompt','second_pass_prompt','detect_task_from_title',
-    'extract_title_and_text','run_o3_structured','sanitize_payload','sanitize_sentence','RUBRICS'
-]
-
-# assignments/utils/rubrics.py
-RUBRICS = {
+# RUBRICS (truncated – keep full dict you pasted)
+RUBRICS: Dict[str, Dict[str, str]] = {
     "NIP TASK 1": {
         "Explain the functionalities of the chatbot": "Does the submission explain the functionalities of the chatbot and how they will meet the needs described in the scenario?",
         "Identify five computing job": "Does the submission describe five computing jobs?",

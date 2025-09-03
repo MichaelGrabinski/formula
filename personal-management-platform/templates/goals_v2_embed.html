@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="mb-4 flex items-center justify-between">
+  <h1 class="text-2xl font-semibold">Goals V2 (React)</h1>
+  <a href="{% url 'goals_v2' %}" class="text-sm underline">Server Rendered Version</a>
+</div>
+<div id="goals-v2-root" class="min-h-[300px]"></div>
+<script id="goals-v2-bootstrap" type="application/json">{{ processed_goals|json_script:"pg" }}</script>
+{% comment %}Built assets will be injected manually (vite manifest) later{% endcomment %}
+{% endblock %}
