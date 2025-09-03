@@ -525,6 +525,7 @@ class SavingsGoal(models.Model):
         ("savings", "Savings"),
         ("investment", "Investment"),
     ))
+    icon = models.CharField(max_length=32, blank=True, null=True, help_text="Optional emoji or short icon code")
     priority = models.PositiveIntegerField(default=0, help_text="Lower number = higher priority")
     created_at = models.DateTimeField(auto_now_add=True)
 

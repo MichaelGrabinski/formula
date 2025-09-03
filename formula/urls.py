@@ -15,8 +15,10 @@ urlpatterns = (
         path("personal/", include("formula.personal_urls")),
 
         # Assignments evaluation tool
-        path("assignments/upload/", views.upload_view, name="assignments_upload"),
-        path("assignments/<int:pk>/", views.detail_view, name="assignments_detail"),
+    path("assignments/", views.list_view, name="assignments_list"),
+    path("assignments/upload/", views.upload_view, name="assignments_upload"),
+    path("assignments/<int:pk>/", views.detail_view, name="assignments_detail"),
+    path("assignments/<int:pk>/chat/", views.chat_view, name="assignments_chat"),
     ]
     + i18n_patterns(
         path("admin/", formula_admin_site.urls),

@@ -3,7 +3,10 @@
 <div class="space-y-6">
   <div class="flex items-center justify-between">
     <h1 class="text-2xl font-semibold">Evaluation Result</h1>
-    <a href="{% url 'assignments_upload' %}" class="text-sm underline">New upload</a>
+    <div class="space-x-4 text-sm">
+      <a href="{% url 'assignments_list' %}" class="underline">List</a>
+      <a href="{% url 'assignments_upload' %}" class="underline">New upload</a>
+    </div>
   </div>
   <div class="border rounded p-4 space-y-2 bg-card">
     <div><span class="font-medium">Original file:</span> {{ upload.original_name }}</div>
@@ -49,6 +52,11 @@
           <div class="text-muted-foreground">No chat turns.</div>
         {% endfor %}
       </div>
+      <form method="post" action="{% url 'assignments_chat' upload.pk %}" class="space-y-2 mt-2">
+        {% csrf_token %}
+        <textarea name="question" rows="2" class="w-full text-xs p-2 border rounded" placeholder="Ask a question about this evaluation or assignment text..."></textarea>
+        <button class="px-3 py-1 rounded bg-primary text-primary-foreground text-xs">Ask</button>
+      </form>
       <h2 class="text-xl font-semibold">Runs</h2>
       <div class="h-80 overflow-auto border rounded p-2 bg-background text-xs space-y-4">
         {% for run in runs %}
@@ -63,5 +71,13 @@
       </div>
     </div>
   </div>
+</div>
+<div class="mt-10 space-y-2">
+  <h2 class="text-xl font-semibold">All Comments (CSV)</h2>
+  <div class="relative">
+    <textarea id="all-comments-csv" readonly class="w-full text-xs p-2 border rounded h-28">{{ all_comments_csv }}</textarea>
+    <button type="button" onclick="(function(){const ta=document.getElementById('all-comments-csv');ta.select();document.execCommand('copy');const b=this;b.innerText='Copied';setTimeout(()=>b.innerText='Copy',1500);})();" class="absolute top-2 right-2 bg-primary text-primary-foreground text-xs px-2 py-1 rounded">Copy</button>
+  </div>
+  <p class="text-xs text-muted-foreground">Copy then paste into your phone keyboard to auto-split by comma.</p>
 </div>
 {% endblock %}

@@ -94,7 +94,7 @@
       },[
         e('div',{className:'card-head'},[
           e('div',{},[
-            e('h3',{className:'title'},[goal.type==='debt'?'🚗':goal.type==='savings'?'🏦':'🎯',goal.name]),
+            e('h3',{className:'title'},[(goal.icon || (goal.type==='debt'?'�':goal.type==='savings'?'💰':'🎯')),goal.name]),
             goal.description && e('p',{className:'desc'},goal.description)
           ]),
           e('div',{style:{display:'flex',gap:'.5rem'}},[
@@ -129,7 +129,7 @@
   const [saving,setSaving] = React.useState(false);
       async function api(path, opts={}){ try { const r= await fetch(path,{headers:{'Content-Type':'application/json'},...opts}); const txt= await r.text(); let data={}; try{ data= txt? JSON.parse(txt):{}; }catch(parseErr){ data={ok:r.ok,error:'Parse error',raw:txt}; } if(typeof data.ok==='undefined') data.ok=r.ok; data._status=r.status; return data;} catch(err){ return {ok:false,error:'Network error',detail:err.message}; } }
       function refresh(){ api('/personal/goals/v2/api/list').then(d=>{ if(d.ok){ setGoals(sequence(d.goals)); } }); }
-  function handleAdd(e){ e.preventDefault(); if(saving) return; setSaving(true); const payload={...form,targetAmount:parseFloat(form.targetAmount||'0'),currentAmount:parseFloat(form.currentAmount||'0'),monthlyContribution:parseFloat(form.monthlyContribution||'0')}; api('/personal/goals/v2/api/add',{method:'POST',body:JSON.stringify(payload)}).then(()=>{ setForm({name:'',description:'',targetAmount:'',currentAmount:'',monthlyContribution:'',type:'savings'}); setSaving(false); setShowAdd(false); refresh(); }).catch(()=>setSaving(false)); }
+  function handleAdd(e){ e.preventDefault(); if(saving) return; setSaving(true); const payload={...form,targetAmount:parseFloat(form.targetAmount||'0'),currentAmount:parseFloat(form.currentAmount||'0'),monthlyContribution:parseFloat(form.monthlyContribution||'0'),icon:form.icon||''}; api('/personal/goals/v2/api/add',{method:'POST',body:JSON.stringify(payload)}).then(()=>{ setForm({name:'',description:'',targetAmount:'',currentAmount:'',monthlyContribution:'',type:'savings',icon:''}); setSaving(false); setShowAdd(false); refresh(); }).catch(()=>setSaving(false)); }
       function openEdit(goal){ setEditing({...goal}); }
       function saveEdit(e){
         e.preventDefault();
@@ -141,7 +141,8 @@
           targetAmount: safeNum(editing.targetAmount),
           currentAmount: safeNum(editing.currentAmount),
           monthlyContribution: safeNum(editing.monthlyContribution),
-          type: editing.type||'savings'
+          type: editing.type||'savings',
+          icon: editing.icon||''
         };
         setSaving(true);
         api(`/personal/goals/v2/api/update/${editing.id}/`, {method:'POST', body: JSON.stringify(payload)})
@@ -175,11 +176,16 @@
                 e('input',{type:'number',step:'0.01',placeholder:'Target',value:form.targetAmount,onChange:e=>setForm(f=>({...f,targetAmount:e.target.value})),style:inputStyle()}),
                 e('input',{type:'number',step:'0.01',placeholder:'Current',value:form.currentAmount,onChange:e=>setForm(f=>({...f,currentAmount:e.target.value})),style:inputStyle()}),
               ]),
-              e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem'}},[
+              e('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem'}},[
                 e('input',{type:'number',step:'0.01',placeholder:'Monthly',value:form.monthlyContribution,onChange:e=>setForm(f=>({...f,monthlyContribution:e.target.value})),style:inputStyle()}),
                 e('select',{value:form.type,onChange:e=>setForm(f=>({...f,type:e.target.value})),style:inputStyle()},[
                   e('option',{value:'savings'},'Savings'),
                   e('option',{value:'debt'},'Debt'),
+                  e('option',{value:'investment'},'Investment'),
+                ]),
+                e('select',{value:form.icon||'',onChange:e=>setForm(f=>({...f,icon:e.target.value})),style:inputStyle()},[
+                  e('option',{value:''},'Icon'),
+                  ...['💰','🏠','🚗','🎓','🛫','🛠️','🩺','🎮','📈','💳','🎯'].map(ic=> e('option',{key:ic,value:ic},ic))
                 ])
               ]),
               e('button',{type:'submit',disabled:saving,style:{background:saving?'#334155':'#0f172a',opacity:saving?.7:1,color:'#fff',border:'none',padding:'0.5rem 0.75rem',borderRadius:8,fontSize:13,cursor:'pointer'}}, saving?'Saving...':'Add Goal')
@@ -203,11 +209,16 @@
                   e('input',{type:'number',step:'0.01',value:editing.targetAmount,onChange:ev=>setEditing(g=>({...g,targetAmount:ev.target.value})) ,placeholder:'Target'}),
                   e('input',{type:'number',step:'0.01',value:editing.currentAmount,onChange:ev=>setEditing(g=>({...g,currentAmount:ev.target.value})) ,placeholder:'Current'}),
                 ]),
-                e('div',{className:'row2'},[
+                e('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'.5rem'}},[
                   e('input',{type:'number',step:'0.01',value:editing.monthlyContribution,onChange:ev=>setEditing(g=>({...g,monthlyContribution:ev.target.value})) ,placeholder:'Monthly'}),
                   e('select',{value:editing.type,onChange:ev=>setEditing(g=>({...g,type:ev.target.value}))},[
                     e('option',{value:'savings'},'Savings'),
                     e('option',{value:'debt'},'Debt'),
+                    e('option',{value:'investment'},'Investment'),
+                  ]),
+                  e('select',{value:editing.icon||'',onChange:ev=>setEditing(g=>({...g,icon:ev.target.value}))},[
+                    e('option',{value:''},'Icon'),
+                    ...['💰','🏠','🚗','🎓','🛫','🛠️','🩺','🎮','📈','💳','🎯'].map(ic=> e('option',{key:ic,value:ic},ic))
                   ])
                 ]),
                 e('div',{style:{display:'flex',gap:'.5rem',marginTop:'.25rem'}},[

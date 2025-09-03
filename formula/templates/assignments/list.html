@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">Assignments</h1>
+    <a href="{% url 'assignments_upload' %}" class="text-sm underline">Upload new</a>
+  </div>
+  <table class="w-full text-sm border rounded overflow-hidden">
+    <thead class="bg-muted/40">
+      <tr>
+        <th class="text-left p-2">ID</th>
+        <th class="text-left p-2">Title</th>
+        <th class="text-left p-2">Type</th>
+        <th class="text-left p-2">Status</th>
+        <th class="text-left p-2">Created</th>
+        <th class="text-left p-2">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for u in uploads %}
+      <tr class="border-t">
+        <td class="p-2">{{ u.id }}</td>
+        <td class="p-2">{{ u.detected_title|default:u.original_name|truncatechars:60 }}</td>
+        <td class="p-2">{{ u.assignment_type|default:'—' }}</td>
+        <td class="p-2">{{ u.status }}</td>
+        <td class="p-2">{{ u.created_at|date:'Y-m-d H:i' }}</td>
+        <td class="p-2"><a class="underline" href="{% url 'assignments_detail' u.pk %}">View</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="p-4 text-center text-muted-foreground">No uploads yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -2858,6 +2858,7 @@ class SavingsGoalsV2EmbedView(SavingsGoalsV2View):
                 'currentAmount': float(g.current_amount or 0),
                 'monthlyContribution': float(g.monthly_contribution or 0),
                 'type': g.goal_type or 'savings',
+                'icon': g.icon or '',
             }
             for g in goals
         ]
@@ -2880,6 +2881,7 @@ def api_goals_list(request):
             'currentAmount': float(g.current_amount or 0),
             'monthlyContribution': float(g.monthly_contribution or 0),
             'type': g.goal_type or 'savings',
+            'icon': g.icon or '',
         }
         for g in goals
     ]
@@ -2910,6 +2912,7 @@ def api_goals_add(request):
         current_amount=current,
         monthly_contribution=monthly,
         goal_type=body.get('type') or 'savings',
+    icon=body.get('icon') or '',
         priority=(last.priority + 1) if last else 0,
     )
     return JsonResponse({'ok': True, 'goal': {
@@ -2920,6 +2923,7 @@ def api_goals_add(request):
         'currentAmount': float(g.current_amount or 0),
         'monthlyContribution': float(g.monthly_contribution or 0),
         'type': g.goal_type or 'savings',
+    'icon': g.icon or '',
     }})
 
 @csrf_exempt
@@ -2935,7 +2939,7 @@ def api_goals_update(request, pk: int):
     mapping = {
         'name': 'title', 'title': 'title', 'description': 'description',
         'targetAmount': 'target_amount', 'currentAmount': 'current_amount',
-        'monthlyContribution': 'monthly_contribution', 'type': 'goal_type'
+    'monthlyContribution': 'monthly_contribution', 'type': 'goal_type', 'icon': 'icon'
     }
     from decimal import Decimal
     for k, v in body.items():
@@ -2954,6 +2958,7 @@ def api_goals_update(request, pk: int):
         'currentAmount': float(g.current_amount or 0),
         'monthlyContribution': float(g.monthly_contribution or 0),
         'type': g.goal_type or 'savings',
+    'icon': g.icon or '',
     }})
 
 @csrf_exempt
@@ -3147,7 +3152,63 @@ def detail_view(request, pk: int):
         'synthesis': synthesis,
         'chat': upload.chat_turns.all(),
         'runs': upload.runs.all(),
+    'all_comments_csv': ', '.join(it.get('comment','') for it in final_items) if final_items else '',
     }
     # prevent stale session growth
     request.session.pop(sess_key, None)
     return render(request, 'assignments/detail.html', context)
+
+
+@login_required
+def list_view(request):
+    """Simple listing of recent uploads."""
+    uploads = Upload.objects.all()[:200]
+    return render(request, 'assignments/list.html', {
+        'uploads': uploads,
+    })
+
+
+@login_required
+def chat_view(request, pk: int):
+    """Accept a user question and generate a heuristic assistant reply referencing extracted text.
+
+    This is a lightweight retrieval: we take up to 5 keywords (>=3 chars) from the question and
+    return sentences from the extracted_text that contain them, plus a brief summary.
+    """
+    upload = get_object_or_404(Upload, pk=pk)
+    if request.method != 'POST':  # safety
+        return redirect('assignments_detail', pk=pk)
+    question = (request.POST.get('question') or '').strip()
+    if not question:
+        return redirect('assignments_detail', pk=pk)
+    ChatTurn.objects.create(upload=upload, role='user', content=question)
+    text = upload.extracted_text[:50000]  # cap
+    # naive sentence split
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    # extract simple keywords
+    words = [w.lower() for w in re.findall(r'[A-Za-z]{3,}', question) if len(w) > 2]
+    seen = set()
+    keywords = []
+    for w in words:
+        if w not in seen:
+            seen.add(w)
+            keywords.append(w)
+        if len(keywords) >= 6:
+            break
+    matched = []
+    if keywords:
+        for s in sentences:
+            ls = s.lower()
+            if any(k in ls for k in keywords):
+                matched.append(s.strip())
+            if len(matched) >= 6:
+                break
+    if not matched:
+        answer_body = "I didn't find explicit matching content; consider adding more detail for: " + ', '.join(keywords[:3])
+    else:
+        answer_body = "Relevant excerpts:\n" + '\n'.join(f"- {m}" for m in matched)
+    synthesis = (
+        answer_body + "\n\nHeuristic note: This is a surface-level retrieval. Add concrete evidence or examples to strengthen alignment."  # guidance
+    )
+    ChatTurn.objects.create(upload=upload, role='assistant', content=synthesis)
+    return redirect('assignments_detail', pk=pk)
