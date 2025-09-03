@@ -3212,3 +3212,68 @@ def chat_view(request, pk: int):
     )
     ChatTurn.objects.create(upload=upload, role='assistant', content=synthesis)
     return redirect('assignments_detail', pk=pk)
+
+
+# =========================
+# TV Dashboard (read-only)
+# =========================
+@login_required
+def tv_dashboard(request):
+    """Aggregated personal + savings overview for a wall/TV.
+
+    Keeps logic minimal & heavy lifting server-side. Auto-refresh done client side.
+    """
+    from .models import SavingsGoal, PersonalTask, PersonalSchedule, PersonalMonthlyItem, PersonalFinancialEntry, SavingsPlan
+    import datetime
+    today = datetime.date.today()
+    # Savings goals summary
+    goals = list(SavingsGoal.objects.all().order_by('priority', 'created_at'))
+    goals_payload = [
+        {
+            'title': g.title,
+            'icon': g.icon or '',
+            'type': g.goal_type or '',
+            'current': float(g.current_amount or 0),
+            'target': float(g.target_amount or 0),
+            'remaining': float(g.remaining_amount),
+            'progress_pct': (float(g.current_amount or 0) / float(g.target_amount) * 100) if g.target_amount else 0,
+        }
+        for g in goals[:12]
+    ]
+    # Tasks: upcoming / in progress / overdue
+    tasks_qs = PersonalTask.objects.select_related('project').all()
+    upcoming = []
+    in_progress = []
+    overdue = []
+    for t in tasks_qs[:400]:
+        if t.status == 'IN_PROGRESS':
+            in_progress.append(t)
+        elif t.status != 'DONE' and t.due_date and t.due_date < today:
+            overdue.append(t)
+        elif t.status != 'DONE':
+            upcoming.append(t)
+    # Finances: month to date net
+    start_month = today.replace(day=1)
+    m_entries = PersonalFinancialEntry.objects.filter(date__gte=start_month, date__lte=today)
+    income = sum(float(e.amount) for e in m_entries if e.type == 'INCOME')
+    expenses = sum(float(e.amount) for e in m_entries if e.type == 'EXPENSE')
+    net = income - expenses
+    recurring = PersonalMonthlyItem.objects.all()
+    # Weekly schedule latest
+    sched = PersonalSchedule.objects.order_by('-week_start').first()
+    schedule_data = sched.data if sched else {}
+    plan = SavingsPlan.objects.first()
+    context = {
+        'today': today,
+        'goals': goals_payload,
+        'tasks_upcoming': upcoming[:20],
+        'tasks_in_progress': in_progress[:20],
+        'tasks_overdue': overdue[:20],
+        'month_income': income,
+        'month_expenses': expenses,
+        'month_net': net,
+        'recurring': recurring[:30],
+        'schedule': schedule_data,
+        'weekly_pool': float(plan.weekly_amount) if plan else 0,
+    }
+    return render(request, 'dashboard/tv.html', context)

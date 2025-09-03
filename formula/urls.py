@@ -19,6 +19,7 @@ urlpatterns = (
     path("assignments/upload/", views.upload_view, name="assignments_upload"),
     path("assignments/<int:pk>/", views.detail_view, name="assignments_detail"),
     path("assignments/<int:pk>/chat/", views.chat_view, name="assignments_chat"),
+    path("tv/dashboard/", views.tv_dashboard, name="tv_dashboard"),
     ]
     + i18n_patterns(
         path("admin/", formula_admin_site.urls),

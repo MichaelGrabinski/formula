@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+<style>
+  body { background:#0f1115; color:#e5e7eb; }
+  .grid-cols-dashboard { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1.25rem; }
+  .panel { background:#1c2129; border:1px solid #2a3038; border-radius:12px; padding:14px 16px; box-shadow:0 4px 12px -2px #000 inset,0 0 0 1px #222; position:relative; }
+  .panel h3 { font-weight:600; font-size:15px; letter-spacing:.5px; margin-bottom:.6rem; text-transform:uppercase; color:#93c5fd; }
+  .mini-bar { height:6px; border-radius:4px; background:#2d333c; overflow:hidden; }
+  .mini-bar span { display:block; height:100%; background:linear-gradient(90deg,#2563eb,#38bdf8); }
+  .pulse-dot { width:10px; height:10px; border-radius:50%; background:#10b981; box-shadow:0 0 8px #10b981aa; }
+  .clock { font-size:72px; font-weight:600; line-height:1; letter-spacing:2px; font-variant-numeric:tabular-nums; }
+  .subclock { font-size:20px; letter-spacing:1px; color:#9ca3af; }
+  .weather { font-size:42px; font-weight:500; }
+  .scroll-y { max-height:340px; overflow:auto; }
+  .tag { background:#27303b; padding:2px 8px; border-radius:999px; font-size:11px; letter-spacing:.5px; }
+  .goal-card { display:flex; flex-direction:column; gap:4px; background:#14181f; border:1px solid #242a32; border-radius:10px; padding:10px 12px; }
+  .goal-card h4 { font-size:14px; font-weight:600; }
+  .goal-progress { font-size:11px; letter-spacing:.5px; color:#9ca3af; }
+  .schedule-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; font-size:11px; }
+  .schedule-cell { background:#14181f; border:1px solid #242a32; border-radius:8px; padding:4px 6px; min-height:70px; display:flex; flex-direction:column; gap:3px; }
+  .schedule-cell h5 { font-size:10px; font-weight:600; color:#64748b; margin:0 0 2px; letter-spacing:.5px; }
+  .badge { font-size:10px; padding:2px 6px; border-radius:6px; background:#1d4ed8; color:#fff; display:inline-block; }
+  .overdue { color:#f87171; }
+  .in-progress { color:#38bdf8; }
+  .upcoming { color:#34d399; }
+  .net-positive { color:#10b981; }
+  .net-negative { color:#f87171; }
+  .refresh-indicator { position:absolute; top:8px; right:12px; font-size:10px; letter-spacing:.75px; color:#475569; }
+</style>
+<div class="grid-cols-dashboard">
+  <div class="panel" style="grid-column:span 2;">
+    <div class="flex items-start justify-between">
+      <div>
+        <div id="clock" class="clock">--:--</div>
+        <div id="subclock" class="subclock">Loading...</div>
+      </div>
+      <div class="text-right">
+        <div id="weather" class="weather">--°</div>
+        <div class="text-xs mt-2 text-slate-400" id="weather-meta">Weather</div>
+      </div>
+    </div>
+    <div class="refresh-indicator" id="refresh-indicator"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Savings Goals</h3>
+    <div class="scroll-y space-y-3">
+      {% for g in goals %}
+      <div class="goal-card">
+        <div class="flex items-center gap-2"><span class="text-lg">{{ g.icon|default:'💰' }}</span><h4>{{ g.title }}</h4></div>
+        <div class="mini-bar" data-progress="{{ g.progress_pct|default:0|floatformat:0 }}"><span></span></div>
+        <div class="goal-progress">${{ g.current|floatformat:0 }} / ${{ g.target|floatformat:0 }} ({{ g.progress_pct|floatformat:0 }}%) • Remaining ${{ g.remaining|floatformat:0 }}</div>
+      </div>
+      {% empty %}<div class="text-xs text-slate-500">No goals.</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Tasks - In Progress</h3>
+    <ul class="scroll-y space-y-2">
+      {% for t in tasks_in_progress %}
+        <li class="text-xs in-progress">{{ t.title }}{% if t.due_date %} • due {{ t.due_date }}{% endif %}</li>
+      {% empty %}<li class="text-xs text-slate-500">None</li>{% endfor %}
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3>Tasks - Overdue</h3>
+    <ul class="scroll-y space-y-2">
+      {% for t in tasks_overdue %}
+        <li class="text-xs overdue">{{ t.title }} • was {{ t.due_date }}</li>
+      {% empty %}<li class="text-xs text-slate-500">None</li>{% endfor %}
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3>Tasks - Upcoming</h3>
+    <ul class="scroll-y space-y-2">
+      {% for t in tasks_upcoming %}
+        <li class="text-xs upcoming">{{ t.title }}{% if t.due_date %} • {{ t.due_date }}{% endif %}</li>
+      {% empty %}<li class="text-xs text-slate-500">None</li>{% endfor %}
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3>Month Finances</h3>
+    <div class="text-sm space-y-2">
+      <div>Income: <span class="net-positive">${{ month_income|floatformat:2 }}</span></div>
+      <div>Expenses: <span class="net-negative">${{ month_expenses|floatformat:2 }}</span></div>
+      <div>Net: <span class="{% if month_net >= 0 %}net-positive{% else %}net-negative{% endif %}">${{ month_net|floatformat:2 }}</span></div>
+      <div class="text-[10px] tracking-wide text-slate-500">Weekly Pool: ${{ weekly_pool|floatformat:2 }}</div>
+    </div>
+  </div>
+
+  <div class="panel" style="grid-column:span 2;">
+    <h3>Recurring (Top 30)</h3>
+    <div class="scroll-y grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px;">
+      {% for r in recurring %}
+        <div class="goal-card" style="gap:2px;">
+          <div class="flex justify-between"><span class="text-xs font-semibold">{{ r.title }}</span><span class="text-xs {% if r.type == 'INCOME' %}net-positive{% else %}net-negative{% endif %}">${{ r.amount|floatformat:0 }}</span></div>
+          <div class="goal-progress">{{ r.type }}{% if r.day_of_month %} • Day {{ r.day_of_month }}{% endif %}</div>
+        </div>
+      {% empty %}<div class="text-xs text-slate-500">None</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="panel" style="grid-column:span 3;">
+    <h3>Weekly Schedule (Latest)</h3>
+    <div class="schedule-grid">
+      {% for day, blocks in schedule.items %}
+        <div class="schedule-cell"><h5>{{ day }}</h5>
+          {% for blk in blocks %}
+            <div class="badge" style="background:#334155;">{{ blk.title|truncatechars:24 }}</div>
+          {% empty %}<div class="text-[9px] text-slate-600">No blocks</div>{% endfor %}
+        </div>
+      {% empty %}<div class="text-xs text-slate-500">No schedule data.</div>{% endfor %}
+    </div>
+  </div>
+
+</div>
+<script>
+// Clock
+function updateClock(){
+  const now=new Date();
+  const h=String(now.getHours()).padStart(2,'0');
+  const m=String(now.getMinutes()).padStart(2,'0');
+  const s=String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clock').textContent=`${h}:${m}`;
+  document.getElementById('subclock').textContent=`${now.toDateString()} • ${s}`;
+}
+setInterval(updateClock,1000);updateClock();
+// Weather (placeholder using browser geolocation + open-meteo anonymous)
+async function fetchWeather(){
+  try{
+    if(!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      const {latitude:lat,longitude:lon}=pos.coords;
+      const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`;
+      const r=await fetch(url);const j=await r.json();
+      if(j.current){
+        document.getElementById('weather').textContent=Math.round(j.current.temperature_2m)+'°';
+        document.getElementById('weather-meta').textContent='Lat '+lat.toFixed(2)+'/'+lon.toFixed(2);
+      }
+    });
+  }catch(e){/* ignore */}
+}
+fetchWeather();setInterval(fetchWeather,30*60*1000);
+// Auto-refresh every 5 minutes to rotate data
+let last=Date.now();
+setInterval(()=>{const el=document.getElementById('refresh-indicator');const diff=((Date.now()-last)/1000).toFixed(0);el.textContent=`REFRESH IN ${300-diff}s`;if(Date.now()-last>300000){location.reload();}},1000);
+// Goal progress bars
+document.querySelectorAll('.mini-bar').forEach(el=>{const p=parseFloat(el.getAttribute('data-progress')||'0');el.querySelector('span').style.width=Math.max(0,Math.min(100,p))+'%';});
+</script>
+{% endblock %}
