@@ -9,20 +9,17 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script type="module" src="https://unpkg.com/lucide-react@0.378.0/dist/esm/lucide-react.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/@radix-ui/colors@latest/black-alpha.css" />
-  <script>
-    /* Minimal Tailwind-esque utility subset for layout (static approximation) */
-  </script>
   <style>
     body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif; margin:0; }
     .app-bg { background:#f8fafc; min-height:100vh; padding:1.5rem; }
     @media (min-width:640px){ .app-bg{padding:2rem;} }
-  .container { width:100%; max-width:1600px; margin:0 auto; }
+    .container { width:100%; max-width:1600px; margin:0 auto; }
     h1 { font-size:1.875rem; line-height:2.25rem; margin:0; font-weight:700; }
     .muted { color:#64748b; }
-  .cards { display:flex; flex-direction:column; gap:1.5rem; }
-  @media (min-width:1024px){ .cards{ flex-direction:row; align-items:stretch; flex-wrap:nowrap; } .cards>div{ flex:1; } }
-  .card { background:#fff; border:1px solid #e2e8f0; border-radius:0.75rem; display:flex; flex-direction:column; box-shadow:0 1px 2px rgba(0,0,0,0.05); position:relative; cursor:grab; }
-  .card.dragging { opacity:.4; }
+    .cards { display:flex; flex-direction:column; gap:1.5rem; }
+    @media (min-width:1024px){ .cards{ flex-direction:row; align-items:stretch; flex-wrap:nowrap; } .cards>div{ flex:1; } }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:0.75rem; display:flex; flex-direction:column; box-shadow:0 1px 2px rgba(0,0,0,0.05); position:relative; cursor:grab; }
+    .card.dragging { opacity:.4; }
     .card-head { padding:1rem 1.25rem 0.5rem; display:flex; justify-content:space-between; gap:.75rem; }
     .title { display:flex; align-items:center; gap:.5rem; font-size:1rem; font-weight:600; margin:0; }
     .desc { font-size:.75rem; color:#64748b; margin:.25rem 0 0; }
@@ -34,24 +31,18 @@
     .footer { background:#f1f5f9; padding:0.75rem 1rem 1rem; font-size:.75rem; display:flex; flex-direction:column; gap:.5rem; border-top:1px solid #e2e8f0; }
     .row { display:flex; justify-content:space-between; }
     .status-badge { font-size:10px; padding:3px 8px; border-radius:999px; background:#e2e8f0; color:#0f172a; font-weight:600; display:inline-flex; align-items:center; gap:4px; }
-  .arrow { display:flex; align-items:center; justify-content:center; padding:0 .25rem; }
-  .arrow svg { width:32px; height:32px; stroke:#cbd5e1; transition:transform .2s; }
-  /* Rotate arrow when stacked vertically (mobile) */
-  @media (max-width:1023px){ .cards .arrow svg { transform:rotate(90deg); } }
-  @media (min-width:1024px){ .arrow{ min-width:40px; } }
-  @media (min-width:1024px){ .arrow{ min-width:40px; } }
-  /* Modal */
-  .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,0.45); display:flex; align-items:center; justify-content:center; z-index:50; }
-  .modal { background:#fff; width:100%; max-width:500px; border-radius:1rem; padding:1.25rem 1.5rem 1.5rem; border:1px solid #e2e8f0; box-shadow:0 15px 50px -5px rgba(0,0,0,0.25); }
-  .modal h2 { margin:0 0 .75rem; font-size:.85rem; letter-spacing:.05em; text-transform:uppercase; font-weight:600; color:#334155; }
-  .modal form { display:grid; gap:.6rem; }
-  .modal .row2 { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
-  .btn { background:#0f172a; color:#fff; border:none; border-radius:8px; padding:.55rem .85rem; font-size:.7rem; letter-spacing:.05em; font-weight:600; cursor:pointer; }
-  .btn.outline { background:#fff; color:#0f172a; border:1px solid #cbd5e1; }
-  .btn.danger { background:#b91c1c; }
-  .modal input, .modal textarea, .modal select { padding:.55rem .65rem; font-size:.75rem; border:1px solid #cbd5e1; border-radius:8px; font-family:inherit; background:#fff; }
-  .drop-indicator { position:absolute; inset:0; border:2px dashed #6366f1; border-radius:0.75rem; pointer-events:none; }
-    button.add { background:#0f172a; color:#fff; border:none; border-radius:0.5rem; padding:.625rem 1rem; font-size:.875rem; cursor:pointer; display:inline-flex; align-items:center; gap:.5rem; }
+    .arrow { display:flex; align-items:center; justify-content:center; padding:0 .25rem; }
+    .arrow svg { width:32px; height:32px; stroke:#cbd5e1; transition:transform .2s; }
+    @media (max-width:1023px){ .cards .arrow svg { transform:rotate(90deg); } }
+    @media (min-width:1024px){ .arrow{ min-width:40px; } }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,0.45); display:flex; align-items:center; justify-content:center; z-index:50; }
+    .modal { background:#fff; width:100%; max-width:500px; border-radius:1rem; padding:1.25rem 1.5rem 1.5rem; border:1px solid #e2e8f0; box-shadow:0 15px 50px -5px rgba(0,0,0,0.25); }
+    .modal h2 { margin:0 0 .75rem; font-size:.85rem; letter-spacing:.05em; text-transform:uppercase; font-weight:600; color:#334155; }
+    .modal form { display:grid; gap:.6rem; }
+    .modal .row2 { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+    .btn { background:#0f172a; color:#fff; border:none; border-radius:8px; padding:.55rem .85rem; font-size:.7rem; letter-spacing:.05em; font-weight:600; cursor:pointer; }
+    .btn.outline { background:#fff; color:#0f172a; border:1px solid #cbd5e1; }
+    .modal input, .modal textarea, .modal select { padding:.55rem .65rem; font-size:.75rem; border:1px solid #cbd5e1; border-radius:8px; font-family:inherit; background:#fff; }
   </style>
 </head>
 <body>
@@ -61,40 +52,39 @@
     const e = React.createElement;
     const jsonEl = document.getElementById('goals-data');
     let initialGoals = [];
-    if(jsonEl){
-      try { initialGoals = JSON.parse(jsonEl.textContent); } catch(e) { console.warn('Goal JSON parse error', e); }
-    }
-    function sequence(goals){
-      let cursor = new Date();
+    if(jsonEl){ try { initialGoals = JSON.parse(jsonEl.textContent); } catch(err){ console.warn('Goal JSON parse error', err); } }
+    function sequence(goals, globalMonthly){
+      const monthly = globalMonthly>0? globalMonthly:1;
+      const now = new Date();
+      let cursor = new Date(now.getFullYear(), now.getMonth(), 1);
       return goals.map(g=>{
         const startDate = new Date(cursor);
-        const remaining = g.targetAmount - g.currentAmount;
-        const months = (remaining>0 && g.monthlyContribution>0)? remaining / g.monthlyContribution : 0;
+        const remaining = Math.max(0,(g.targetAmount||0)-(g.currentAmount||0));
+        const monthsNeeded = remaining>0? Math.ceil(remaining/monthly):0;
         const completionDate = new Date(startDate);
-        if(months>0){ completionDate.setMonth(completionDate.getMonth()+months); }
-        cursor = completionDate;
-        return { ...g, startDate, completionDate };
+        if(monthsNeeded>0){ completionDate.setMonth(completionDate.getMonth()+monthsNeeded-1); }
+        cursor = new Date(completionDate.getFullYear(), completionDate.getMonth()+1, 1);
+        return {...g,startDate,completionDate,monthsNeeded};
       });
     }
-    function GoalCard({goal,onEdit,onDelete,onDragStart,onDragOver,onDrop,draggingId}){
-      const progress = goal.targetAmount>0 ? (goal.currentAmount/goal.targetAmount)*100 : 100;
-      const rem = goal.targetAmount - goal.currentAmount;
+    function GoalCard({goal,onEdit,onDelete,onDragStart,onDragOver,onDrop,draggingId,globalMonthly}){
+      const progress = goal.targetAmount>0? (goal.currentAmount/goal.targetAmount)*100 : 100;
+      const rem = Math.max(0, goal.targetAmount - goal.currentAmount);
       const today = new Date();
       const completed = progress>=100;
       const active = !completed && goal.startDate <= today;
-      const status = completed? 'Completed': active? 'Active':'Pending';
+      const status = completed? 'Completed' : active? 'Active':'Pending';
       const pct = Math.round(progress);
-      const isDragging = draggingId===goal.id;
       return e('div',{
-        className:'card'+(isDragging?' dragging':''),
+        className:'card'+(draggingId===goal.id?' dragging':''),
         draggable:true,
-        onDragStart:(ev)=>onDragStart(ev,goal),
-        onDragOver:(ev)=>onDragOver(ev,goal),
-        onDrop:(ev)=>onDrop(ev,goal)
+        onDragStart:ev=>onDragStart(ev,goal),
+        onDragOver:ev=>onDragOver(ev,goal),
+        onDrop:ev=>onDrop(ev,goal)
       },[
         e('div',{className:'card-head'},[
           e('div',{},[
-            e('h3',{className:'title'},[(goal.icon || (goal.type==='debt'?'�':goal.type==='savings'?'💰':'🎯')),goal.name]),
+            e('h3',{className:'title'},[(goal.icon || (goal.type==='debt'?'💳':goal.type==='savings'?'💰':'🎯')),goal.name]),
             goal.description && e('p',{className:'desc'},goal.description)
           ]),
           e('div',{style:{display:'flex',gap:'.5rem'}},[
@@ -115,106 +105,104 @@
           ]),
           e('div',{},[
             e('div',{className:'row'},[e('span',{className:'muted'},'Remaining'), e('span',{},'$'+rem.toLocaleString())]),
-            e('div',{className:'row'},[e('span',{className:'muted'},'Monthly'), e('span',{},'$'+goal.monthlyContribution.toLocaleString())])
+            e('div',{className:'row'},[e('span',{className:'muted'},'Global Monthly'), e('span',{},'$'+Number(globalMonthly||0).toLocaleString())])
           ])
         ])
       ]);
     }
     function App(){
-      const [goals,setGoals] = React.useState(sequence(initialGoals));
-      const [form,setForm] = React.useState({name:'',description:'',targetAmount:'',currentAmount:'',monthlyContribution:'',type:'savings'});
-  const [editing,setEditing] = React.useState(null);
+      const storedGlobal = (function(){ try{ return parseFloat(localStorage.getItem('goals_global_monthly')||''); }catch(e){ return 0; } })();
+      const [globalMonthly,setGlobalMonthly] = React.useState(Number.isFinite(storedGlobal)&&storedGlobal>0? storedGlobal: 1000);
+      const [goals,setGoals] = React.useState(initialGoals);
+      const [form,setForm] = React.useState({name:'',description:'',targetAmount:'',currentAmount:'',type:'savings',icon:''});
+      const [editing,setEditing] = React.useState(null);
       const [draggingId,setDraggingId] = React.useState(null);
-  const [showAdd,setShowAdd] = React.useState(false);
-  const [saving,setSaving] = React.useState(false);
-      async function api(path, opts={}){ try { const r= await fetch(path,{headers:{'Content-Type':'application/json'},...opts}); const txt= await r.text(); let data={}; try{ data= txt? JSON.parse(txt):{}; }catch(parseErr){ data={ok:r.ok,error:'Parse error',raw:txt}; } if(typeof data.ok==='undefined') data.ok=r.ok; data._status=r.status; return data;} catch(err){ return {ok:false,error:'Network error',detail:err.message}; } }
-      function refresh(){ api('/personal/goals/v2/api/list').then(d=>{ if(d.ok){ setGoals(sequence(d.goals)); } }); }
-  function handleAdd(e){ e.preventDefault(); if(saving) return; setSaving(true); const payload={...form,targetAmount:parseFloat(form.targetAmount||'0'),currentAmount:parseFloat(form.currentAmount||'0'),monthlyContribution:parseFloat(form.monthlyContribution||'0'),icon:form.icon||''}; api('/personal/goals/v2/api/add',{method:'POST',body:JSON.stringify(payload)}).then(()=>{ setForm({name:'',description:'',targetAmount:'',currentAmount:'',monthlyContribution:'',type:'savings',icon:''}); setSaving(false); setShowAdd(false); refresh(); }).catch(()=>setSaving(false)); }
-      function openEdit(goal){ setEditing({...goal}); }
-      function saveEdit(e){
-        e.preventDefault();
-        if(saving || !editing) return;
-        const safeNum=v=>{ const n=parseFloat(v); return Number.isFinite(n)? n:0; };
-        const payload={
-          name: (editing.name||'').trim()||'Untitled',
-          description: editing.description||'',
-          targetAmount: safeNum(editing.targetAmount),
-          currentAmount: safeNum(editing.currentAmount),
-          monthlyContribution: safeNum(editing.monthlyContribution),
-          type: editing.type||'savings',
-          icon: editing.icon||''
-        };
-        setSaving(true);
-        api(`/personal/goals/v2/api/update/${editing.id}/`, {method:'POST', body: JSON.stringify(payload)})
-          .then(r=>{ if(r.ok){ setEditing(null); refresh(); } else { alert(r.error||'Save failed'); } })
-          .catch(err=>{ alert('Network error'); console.error(err); })
-          .finally(()=> setSaving(false));
+      const [showAdd,setShowAdd] = React.useState(false);
+      const [saving,setSaving] = React.useState(false);
+      async function api(path, opts={}){
+        try {
+          const r = await fetch(path,{headers:{'Content-Type':'application/json'},...opts});
+          const txt = await r.text();
+          let data={};
+          try{ data = txt? JSON.parse(txt):{}; }catch(parseErr){ data={ok:r.ok,error:'Parse error',raw:txt}; }
+          if(typeof data.ok==='undefined') data.ok=r.ok; data._status=r.status; return data;
+        } catch(err){ return {ok:false,error:'Network error',detail:err.message}; }
       }
-      function handleDelete(goal){ api(`/personal/goals/v2/api/delete/${goal.id}/`, {method:'POST'}).then(()=> refresh()); }
-      const seq = sequence(goals);
+      function refresh(){ api('/personal/goals/v2/api/list').then(d=>{ if(d.ok){ setGoals(d.goals); } }); }
+      function handleGlobalMonthlyChange(v){ const val=parseFloat(v)||0; setGlobalMonthly(val); try{ localStorage.setItem('goals_global_monthly', String(val)); }catch(e){} }
+      function handleAdd(e){ e.preventDefault(); if(saving) return; setSaving(true); const payload={...form,targetAmount:parseFloat(form.targetAmount||'0'),currentAmount:parseFloat(form.currentAmount||'0'),monthlyContribution:0,icon:form.icon||''}; api('/personal/goals/v2/api/add',{method:'POST',body:JSON.stringify(payload)}).then(()=>{ setForm({name:'',description:'',targetAmount:'',currentAmount:'',type:'savings',icon:''}); setShowAdd(false); refresh(); }).finally(()=>setSaving(false)); }
+      function openEdit(goal){ setEditing({...goal}); }
+      function saveEdit(e){ e.preventDefault(); if(!editing||saving) return; const safeNum=v=>{const n=parseFloat(v); return Number.isFinite(n)? n:0;}; const payload={ name:(editing.name||'').trim()||'Untitled', description:editing.description||'', targetAmount:safeNum(editing.targetAmount), currentAmount:safeNum(editing.currentAmount), monthlyContribution:0, type:editing.type||'savings', icon:editing.icon||'' }; setSaving(true); api(`/personal/goals/v2/api/update/${editing.id}/`,{method:'POST',body:JSON.stringify(payload)}).then(r=>{ if(r.ok){ setEditing(null); refresh(); } else { alert(r.error||'Save failed'); } }).finally(()=>setSaving(false)); }
+      function handleDelete(goal){ if(!confirm('Delete goal?')) return; api(`/personal/goals/v2/api/delete/${goal.id}/`,{method:'POST'}).then(()=>refresh()); }
       function onDragStart(ev,goal){ setDraggingId(goal.id); ev.dataTransfer.effectAllowed='move'; }
       function onDragOver(ev,goal){ ev.preventDefault(); }
-      function onDrop(ev,goal){ ev.preventDefault(); if(!draggingId||draggingId===goal.id) return; const order=[...seq]; const from=order.findIndex(g=>g.id===draggingId); const to=order.findIndex(g=>g.id===goal.id); if(from===-1||to===-1) return; const [m]=order.splice(from,1); order.splice(to,0,m); setGoals(order); setDraggingId(null); api('/personal/goals/reorder/',{method:'POST', body: JSON.stringify({ids: order.map(g=>g.id)})}); }
+      function onDrop(ev,goal){ ev.preventDefault(); if(!draggingId||draggingId===goal.id) return; const order=[...goals]; const from=order.findIndex(g=>g.id===draggingId); const to=order.findIndex(g=>g.id===goal.id); if(from===-1||to===-1) return; const [m]=order.splice(from,1); order.splice(to,0,m); setGoals(order); setDraggingId(null); api('/personal/goals/reorder/',{method:'POST',body:JSON.stringify({ids:order.map(g=>g.id)})}); }
+      const seq = sequence(goals, globalMonthly);
       return e('div',{className:'app-bg'},
         e('div',{className:'container'},[
-          e('header',{style:{marginBottom:'2rem', display:'flex', flexDirection:'column', gap:'1rem'}},[
+          e('header',{style:{marginBottom:'2rem',display:'flex',flexDirection:'column',gap:'1rem'}},[
             e('div',{},[
               e('h1',{},'Financial Goals Dashboard'),
-              e('p',{className:'muted', style:{marginTop:4}},'Your sequenced plan to financial success.')
+              e('p',{className:'muted',style:{marginTop:4}},'Your sequenced plan to financial success (single global monthly allocation).')
+            ]),
+            e('div',{style:{display:'flex',flexWrap:'wrap',gap:'1rem',alignItems:'flex-end'}},[
+              e('div',{style:{display:'flex',flexDirection:'column',gap:4}},[
+                e('label',{style:{fontSize:11,letterSpacing:'.07em',textTransform:'uppercase',fontWeight:600,color:'#334155'}},'Global Monthly Contribution'),
+                e('input',{type:'number',value:globalMonthly,onChange:ev=>handleGlobalMonthlyChange(ev.target.value),style:inputStyle(),step:'0.01',min:'0'})
+              ]),
+              e('div',{style:{fontSize:12,color:'#64748b'}}, seq.length? 'Projected end of final goal: '+ seq[seq.length-1].completionDate.toLocaleDateString(undefined,{month:'short',year:'numeric'}) : '')
             ]),
             !showAdd && e('div',{style:{display:'flex',alignItems:'center',gap:8}},[
               e('button',{onClick:()=>setShowAdd(true),style:{background:'#0f172a',color:'#fff',border:'none',padding:'0.45rem 0.85rem',borderRadius:8,fontSize:13,cursor:'pointer'}},'+ Add Goal')
             ]),
-            showAdd && e('form',{onSubmit:handleAdd, style:{display:'grid', gap:'0.5rem', maxWidth:480, background:'#ffffff', padding:'1rem', border:'1px solid #e2e8f0', borderRadius:12, position:'relative'}},[
+            showAdd && e('form',{onSubmit:handleAdd,style:{display:'grid',gap:'0.5rem',maxWidth:480,background:'#fff',padding:'1rem',border:'1px solid #e2e8f0',borderRadius:12,position:'relative'}},[
               e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},[
                 e('strong',{style:{fontSize:'0.7rem',textTransform:'uppercase',letterSpacing:'0.08em'}},'Add Goal'),
                 e('button',{type:'button',onClick:()=>setShowAdd(false),style:{background:'transparent',border:'none',cursor:'pointer',fontSize:16,lineHeight:1,color:'#64748b'}},'×')
               ]),
-              e('input',{placeholder:'Title',required:true,value:form.name,onChange:e=>setForm(f=>({...f,name:e.target.value})),style:inputStyle()}),
-              e('textarea',{placeholder:'Description',value:form.description,onChange:e=>setForm(f=>({...f,description:e.target.value})),rows:2,style:inputStyle()}),
+              e('input',{placeholder:'Title',required:true,value:form.name,onChange:ev=>setForm(f=>({...f,name:ev.target.value})),style:inputStyle()}),
+              e('textarea',{placeholder:'Description',value:form.description,onChange:ev=>setForm(f=>({...f,description:ev.target.value})),rows:2,style:inputStyle()}),
               e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem'}},[
-                e('input',{type:'number',step:'0.01',placeholder:'Target',value:form.targetAmount,onChange:e=>setForm(f=>({...f,targetAmount:e.target.value})),style:inputStyle()}),
-                e('input',{type:'number',step:'0.01',placeholder:'Current',value:form.currentAmount,onChange:e=>setForm(f=>({...f,currentAmount:e.target.value})),style:inputStyle()}),
+                e('input',{type:'number',step:'0.01',placeholder:'Target',value:form.targetAmount,onChange:ev=>setForm(f=>({...f,targetAmount:ev.target.value})),style:inputStyle()}),
+                e('input',{type:'number',step:'0.01',placeholder:'Current',value:form.currentAmount,onChange:ev=>setForm(f=>({...f,currentAmount:ev.target.value})),style:inputStyle()}),
               ]),
-              e('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem'}},[
-                e('input',{type:'number',step:'0.01',placeholder:'Monthly',value:form.monthlyContribution,onChange:e=>setForm(f=>({...f,monthlyContribution:e.target.value})),style:inputStyle()}),
-                e('select',{value:form.type,onChange:e=>setForm(f=>({...f,type:e.target.value})),style:inputStyle()},[
+              e('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'0.5rem'}},[
+                e('select',{value:form.type,onChange:ev=>setForm(f=>({...f,type:ev.target.value})),style:inputStyle()},[
                   e('option',{value:'savings'},'Savings'),
                   e('option',{value:'debt'},'Debt'),
-                  e('option',{value:'investment'},'Investment'),
+                  e('option',{value:'investment'},'Investment')
                 ]),
-                e('select',{value:form.icon||'',onChange:e=>setForm(f=>({...f,icon:e.target.value})),style:inputStyle()},[
+                e('select',{value:form.icon||'',onChange:ev=>setForm(f=>({...f,icon:ev.target.value})),style:inputStyle()},[
                   e('option',{value:''},'Icon'),
                   ...['💰','🏠','🚗','🎓','🛫','🛠️','🩺','🎮','📈','💳','🎯'].map(ic=> e('option',{key:ic,value:ic},ic))
                 ])
               ]),
-              e('button',{type:'submit',disabled:saving,style:{background:saving?'#334155':'#0f172a',opacity:saving?.7:1,color:'#fff',border:'none',padding:'0.5rem 0.75rem',borderRadius:8,fontSize:13,cursor:'pointer'}}, saving?'Saving...':'Add Goal')
+              e('button',{type:'submit',disabled:saving,style:{background:saving?'#334155':'#0f172a',opacity:saving?0.7:1,color:'#fff',border:'none',padding:'0.5rem 0.75rem',borderRadius:8,fontSize:13,cursor:'pointer'}}, saving?'Saving...':'Add Goal')
             ])
           ]),
           e('main',{},[
             e('div',{className:'cards'}, seq.map((g,i)=>
               e('div',{key:g.id},[
-                e(GoalCard,{goal:g,onEdit:openEdit,onDelete:handleDelete,onDragStart,onDragOver,onDrop,draggingId}),
+                e(GoalCard,{goal:g,onEdit:openEdit,onDelete:handleDelete,onDragStart,onDragOver,onDrop,draggingId,globalMonthly}),
                 (i<seq.length-1)? e('div',{className:'arrow'}, e('svg',{fill:'none',stroke:'currentColor',viewBox:'0 0 24 24'}, e('path',{d:'M9 5l7 7-7 7',strokeWidth:1.5,strokeLinecap:'round',strokeLinejoin:'round'}))):null
               ])
             ))
           ]),
-          editing && e('div',{className:'modal-backdrop',onClick:(e)=>{ if(e.target.classList.contains('modal-backdrop')&&!saving) setEditing(null); }},[
+          editing && e('div',{className:'modal-backdrop',onClick:ev=>{ if(ev.target.classList.contains('modal-backdrop')&&!saving) setEditing(null); }},[
             e('div',{className:'modal'},[
               e('h2',{},'Edit Goal'),
               e('form',{onSubmit:saveEdit},[
                 e('input',{value:editing.name,onChange:ev=>setEditing(g=>({...g,name:ev.target.value})),placeholder:'Title',required:true}),
                 e('textarea',{value:editing.description||'',onChange:ev=>setEditing(g=>({...g,description:ev.target.value})),rows:3,placeholder:'Description'}),
                 e('div',{className:'row2'},[
-                  e('input',{type:'number',step:'0.01',value:editing.targetAmount,onChange:ev=>setEditing(g=>({...g,targetAmount:ev.target.value})) ,placeholder:'Target'}),
-                  e('input',{type:'number',step:'0.01',value:editing.currentAmount,onChange:ev=>setEditing(g=>({...g,currentAmount:ev.target.value})) ,placeholder:'Current'}),
+                  e('input',{type:'number',step:'0.01',value:editing.targetAmount,onChange:ev=>setEditing(g=>({...g,targetAmount:ev.target.value})),placeholder:'Target'}),
+                  e('input',{type:'number',step:'0.01',value:editing.currentAmount,onChange:ev=>setEditing(g=>({...g,currentAmount:ev.target.value})),placeholder:'Current'}),
                 ]),
-                e('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'.5rem'}},[
-                  e('input',{type:'number',step:'0.01',value:editing.monthlyContribution,onChange:ev=>setEditing(g=>({...g,monthlyContribution:ev.target.value})) ,placeholder:'Monthly'}),
+                e('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'.5rem'}},[
                   e('select',{value:editing.type,onChange:ev=>setEditing(g=>({...g,type:ev.target.value}))},[
                     e('option',{value:'savings'},'Savings'),
                     e('option',{value:'debt'},'Debt'),
-                    e('option',{value:'investment'},'Investment'),
+                    e('option',{value:'investment'},'Investment')
                   ]),
                   e('select',{value:editing.icon||'',onChange:ev=>setEditing(g=>({...g,icon:ev.target.value}))},[
                     e('option',{value:''},'Icon'),
@@ -222,8 +210,7 @@
                   ])
                 ]),
                 e('div',{style:{display:'flex',gap:'.5rem',marginTop:'.25rem'}},[
-                  e('button',{type:'submit',disabled:saving,className:'btn',style:saving?{opacity:.7}:{}}
-                  , saving?'Saving...':'Save'),
+                  e('button',{type:'submit',disabled:saving,className:'btn',style:saving?{opacity:.7}:{}},'Save'),
                   e('button',{type:'button',disabled:saving,className:'btn outline',onClick:()=>setEditing(null)},'Cancel')
                 ])
               ])
@@ -232,7 +219,7 @@
         ])
       );
     }
-    function inputStyle(){return {padding:'0.5rem 0.65rem',fontSize:13,border:'1px solid #cbd5e1',borderRadius:8,background:'#fff',resize:'vertical'} }
+    function inputStyle(){ return {padding:'0.5rem 0.65rem',fontSize:13,border:'1px solid #cbd5e1',borderRadius:8,background:'#fff',resize:'vertical'} }
     ReactDOM.createRoot(document.getElementById('root')).render(e(App));
   </script>
 </body>

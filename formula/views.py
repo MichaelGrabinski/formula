@@ -3014,6 +3014,7 @@ from django.contrib.auth.decorators import login_required
 from .forms import UploadForm
 from .models import Upload, RunResult, ChatTurn
 from .utils import RUBRICS
+import os, json
 
 
 def _detect_rubric(extracted_text: str) -> str:
@@ -3064,6 +3065,148 @@ def _evaluate_text(rubric_name: str, text: str):
     return results, synthesis
 
 
+def _evaluate_text_ai(rubric_name: str, text: str):
+    """Two-phase AI evaluation: structure with GPT-5 (or fallback) then reasoning validation with o3 (or fallback).
+
+    Returns (items, synthesis, steps) where steps is a list of run dicts for persistence.
+    Each final item may include validated_score (0/1) and reason.
+    """
+    if not os.getenv('OPENAI_API_KEY'):
+        raise RuntimeError('OPENAI_API_KEY not configured')
+    rubric = RUBRICS.get(rubric_name, {})
+    if not rubric:
+        raise RuntimeError('Rubric not found')
+    struct_model = os.getenv('OPENAI_STRUCT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5'))
+    reason_model = os.getenv('OPENAI_REASON_MODEL', 'o3')
+    # Fallback hints
+    fallback_struct = 'gpt-4o-mini'
+    fallback_reason = 'gpt-4o-mini'
+
+    rubric_lines = [f"- {k}: {v}" for k, v in rubric.items()]
+    snippet = text[:15000]
+    system_struct = (
+        "You evaluate a student assignment against a rubric. "
+        "Respond ONLY with valid JSON: {\"items\": [ {\"label\": str, \"question\": str, \"initial_comment\": str }... ], \"synthesis\": str }. "
+        "One sentence per initial_comment. No markdown fences."
+    )
+    user_struct = (
+        f"Rubric: {rubric_name}\nItems:\n" + '\n'.join(rubric_lines) + "\n\nAssignment (truncated):\n" + snippet
+    )
+    try:
+        from openai import OpenAI  # type: ignore
+        client = OpenAI()
+        # Phase 1: structural extraction
+        try:
+            resp1 = client.chat.completions.create(
+                model=struct_model,
+                messages=[{"role": "system", "content": system_struct}, {"role": "user", "content": user_struct}],
+                temperature=0,
+                max_tokens=900,
+            )
+        except Exception:
+            # retry with fallback
+            resp1 = client.chat.completions.create(
+                model=fallback_struct,
+                messages=[{"role": "system", "content": system_struct}, {"role": "user", "content": user_struct}],
+                temperature=0,
+                max_tokens=900,
+            )
+        content1 = resp1.choices[0].message.content.strip()
+        if content1.startswith('```'):
+            content1 = content1.strip('`')
+            content1 = content1.split('\n', 1)[-1]
+        data = json.loads(content1)
+        raw_items = data.get('items') or []
+        synthesis = (data.get('synthesis') or '').strip()
+        norm_items = []
+        for it in raw_items:
+            if not isinstance(it, dict):
+                continue
+            norm_items.append({
+                'label': it.get('label', '').strip()[:200],
+                'question': it.get('question', '').strip()[:500],
+                'comment': it.get('initial_comment', it.get('comment','')).strip()[:500],
+            })
+        if not norm_items:
+            raise RuntimeError('No items returned by structural model')
+        # Phase 2: reasoning validation per item (cap to 40 items for safety)
+        validated = []
+        reason_failures = 0
+        for it in norm_items[:40]:
+            label = it['label']
+            question = it['question']
+            base_comment = it['comment']
+            # Build small context slice: naive keyword search
+            ctx_slice = ''
+            kw = label.split()[:3]
+            low_text = text.lower()
+            for k in kw:
+                idx = low_text.find(k.lower())
+                if idx != -1:
+                    start = max(0, idx-160)
+                    end = idx+160
+                    ctx_slice = text[start:end]
+                    break
+            reason_system = (
+                "You are a strict rubric reasoning validator. Return JSON: {label, validated_score: 0|1, revised_comment, reason}. "
+                "validated_score=1 only if the assignment excerpt clearly supports the rubric item. Keep revised_comment one sentence."
+            )
+            reason_user = (
+                f"Rubric Item Label: {label}\nQuestion: {question}\nCurrent Comment: {base_comment}\nExcerpt: {ctx_slice or 'N/A'}"
+            )
+            try:
+                try:
+                    resp2 = client.chat.completions.create(
+                        model=reason_model,
+                        messages=[{"role": "system", "content": reason_system}, {"role": "user", "content": reason_user}],
+                        temperature=0,
+                        max_tokens=350,
+                    )
+                except Exception:
+                    resp2 = client.chat.completions.create(
+                        model=fallback_reason,
+                        messages=[{"role": "system", "content": reason_system}, {"role": "user", "content": reason_user}],
+                        temperature=0,
+                        max_tokens=350,
+                    )
+                c2 = resp2.choices[0].message.content.strip()
+                if c2.startswith('```'):
+                    c2 = c2.strip('`')
+                    c2 = c2.split('\n', 1)[-1]
+                jd = json.loads(c2)
+                validated_score = 1 if str(jd.get('validated_score','')).strip() in {'1','true','True'} else 0
+                revised_comment = jd.get('revised_comment') or jd.get('comment') or base_comment
+                reason_txt = jd.get('reason','')[:400]
+                it['validated_score'] = validated_score
+                it['reason'] = reason_txt
+                it['comment'] = revised_comment.strip()[:500]
+            except Exception:
+                reason_failures += 1
+                it['validated_score'] = None
+                it['reason'] = 'Reasoning validation failed'
+            validated.append(it)
+        if reason_failures and not synthesis:
+            synthesis = f"Structural evaluation produced {len(validated)} items; {reason_failures} reasoning checks failed."
+        if not synthesis:
+            positives = sum(1 for v in validated if v.get('validated_score') == 1)
+            synthesis = f"{positives} of {len(validated)} items show clear evidence; focus on strengthening the remainder with concrete examples."[:400]
+        steps = [
+            {
+                'step_name': 'ai_structure_evaluation',
+                'prompt': f'Rubric: {rubric_name} model={struct_model}',
+                'output_text': content1[:5000],
+            },
+            {
+                'step_name': 'ai_reasoning_validation',
+                'prompt': f'Rubric: {rubric_name} model={reason_model}',
+                'output_text': json.dumps([{'label': v['label'], 'validated_score': v.get('validated_score'), 'reason': v.get('reason')} for v in validated])[:8000],
+            }
+        ]
+        return validated, synthesis[:1000], steps
+    except Exception as e:
+        raise RuntimeError(f'AI evaluation failed: {e}')
+
+
 @login_required
 def upload_view(request):
     if request.method == 'POST':
@@ -3095,20 +3238,48 @@ def upload_view(request):
             if forced_type and forced_type != 'auto' and forced_type in RUBRICS:
                 rubric_name = forced_type
             upload.assignment_type = rubric_name
-            # Evaluate (currently heuristic only; placeholder for AI mode)
-            items, synthesis = _evaluate_text(rubric_name, upload.extracted_text)
+            used_mode = 'heuristic'
+            extra_steps = []
             if evaluation_mode == 'ai':
-                ChatTurn.objects.create(upload=upload, role='system', content='AI mode requested; heuristic used (AI path not yet implemented).')
+                try:
+                    ai_result = _evaluate_text_ai(rubric_name, upload.extracted_text)
+                    if isinstance(ai_result, tuple) and len(ai_result) == 3:
+                        items, synthesis, extra_steps = ai_result
+                    else:  # backward compat
+                        items, synthesis = ai_result  # type: ignore
+                    used_mode = 'ai'
+                except Exception as ai_err:
+                    items, synthesis = _evaluate_text(rubric_name, upload.extracted_text)
+                    ChatTurn.objects.create(upload=upload, role='system', content=f'AI evaluation failed; fallback heuristic used. ({ai_err})')
+            else:
+                items, synthesis = _evaluate_text(rubric_name, upload.extracted_text)
             upload.status = 'evaluated'
             upload.save(update_fields=['assignment_type', 'status'])
-            # Persist run + chat trace (simple)
-            RunResult.objects.create(
-                upload=upload,
-                step_name='heuristic_evaluation',
-                prompt=f'Rubric: {rubric_name}',
-                output_text=str(items)
-            )
-            ChatTurn.objects.create(upload=upload, role='system', content=f'Heuristic rubric evaluation executed for {rubric_name}')
+            # Persist run(s)
+            if used_mode == 'ai':
+                # main final items snapshot
+                RunResult.objects.create(
+                    upload=upload,
+                    step_name='ai_final_items',
+                    prompt=f'Rubric: {rubric_name}',
+                    output_text=str(items)
+                )
+                for st in extra_steps:
+                    RunResult.objects.create(
+                        upload=upload,
+                        step_name=st['step_name'],
+                        prompt=st['prompt'],
+                        output_text=st['output_text'],
+                    )
+                ChatTurn.objects.create(upload=upload, role='system', content=f'AI STRUCT={os.getenv("OPENAI_STRUCT_MODEL","gpt-5")} REASON={os.getenv("OPENAI_REASON_MODEL","o3")} evaluation executed for {rubric_name}')
+            else:
+                RunResult.objects.create(
+                    upload=upload,
+                    step_name='heuristic_evaluation',
+                    prompt=f'Rubric: {rubric_name}',
+                    output_text=str(items)
+                )
+                ChatTurn.objects.create(upload=upload, role='system', content=f'HEURISTIC rubric evaluation executed for {rubric_name}')
             ChatTurn.objects.create(upload=upload, role='assistant', content=synthesis)
             # Stash synthesized data in session for immediate detail view (avoid re-parsing list string)
             request.session[f'assign_eval_{upload.pk}'] = {
@@ -3132,8 +3303,8 @@ def detail_view(request, pk: int):
         final_items = data.get('items', [])
         synthesis = data.get('synthesis', '')
     else:
-        # attempt to reconstruct from RunResult (eval of stored list string)
-        run = upload.runs.filter(step_name='heuristic_evaluation').order_by('-id').first()
+        # attempt to reconstruct from RunResult (prefer AI over heuristic)
+        run = upload.runs.filter(step_name__in=['ai_evaluation','heuristic_evaluation']).order_by('-id').first()
         if run:
             try:
                 # unsafe eval avoided; use literal_eval
