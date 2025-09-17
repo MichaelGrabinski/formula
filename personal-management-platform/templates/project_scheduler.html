@@ -2,34 +2,74 @@
 
 {% block content %}
 <div class="space-y-6">
+  <style>
+    /* Sleek visual polish for scheduler */
+    .scheduler-card { border-radius: 14px; box-shadow: 0 6px 18px -6px rgba(2,6,23,0.15); }
+    .scheduler-input { border-color: rgb(226 232 240 / 1); }
+    .dark .scheduler-input { border-color: rgb(30 41 59 / 1); }
+    .scheduler-zone {
+      border-radius: 12px;
+      background:
+        linear-gradient(to bottom, rgba(148,163,184,0.07), rgba(148,163,184,0.07)) padding-box,
+        repeating-linear-gradient(to bottom, transparent 0 59px, rgba(148,163,184,0.18) 59px 60px);
+      /* 60px ~ 1h lines; adjust text height accordingly */
+      position: relative;
+    }
+    .dark .scheduler-zone {
+      background:
+        linear-gradient(to bottom, rgba(148,163,184,0.06), rgba(148,163,184,0.06)) padding-box,
+        repeating-linear-gradient(to bottom, transparent 0 59px, rgba(148,163,184,0.16) 59px 60px);
+    }
+    .scheduler-day { border-radius: 14px; overflow: hidden; background: var(--card, rgba(255,255,255,0.6)); backdrop-filter: saturate(120%) blur(2px); }
+    .dark .scheduler-day { background: rgba(2,6,23,0.35); }
+    .scheduler-day .day-label { position: sticky; top: 0; z-index: 5; background: linear-gradient(to bottom, rgba(250,250,250,0.9), rgba(250,250,250,0.6)); padding: 8px 10px; }
+    .dark .scheduler-day .day-label { background: linear-gradient(to bottom, rgba(2,6,23,0.8), rgba(2,6,23,0.5)); }
+    .scheduler-block { border-radius: 10px !important; backdrop-filter: saturate(110%) blur(2px); }
+    .scheduler-counter { border-radius: 9999px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+  </style>
   <div class="flex items-center justify-between">
-    <h1 class="text-2xl font-semibold">Project Scheduler</h1>
-    <div class="text-sm text-muted-foreground">Default window: <span id="openWindowLabel">{{ open_start }} – {{ open_end }}</span></div>
+    <div class="flex items-center gap-3">
+      <h1 class="text-2xl font-semibold">Project Scheduler</h1>
+      <div class="text-sm text-muted-foreground">Window: <span id="openWindowLabel">{{ open_start }} – {{ open_end }}</span></div>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="inline-flex items-center gap-1 border rounded-lg px-1 py-1 bg-card">
+        <button type="button" id="modeWeek" class="px-2 py-1 text-sm rounded-md bg-primary text-primary-foreground" data-mode="week">Week</button>
+        <button type="button" id="modeDay" class="px-2 py-1 text-sm rounded-md" data-mode="day">Day</button>
+        <button type="button" id="modeMonth" class="px-2 py-1 text-sm rounded-md" data-mode="month">Month</button>
+      </div>
+      <div class="inline-flex items-center gap-1">
+        <button type="button" id="prevWeek" class="px-2 py-1 rounded bg-secondary text-secondary-foreground">←</button>
+        <div id="weekLabel" class="text-sm px-2">{{ days.0|date:"M j" }} – {{ days.6|date:"M j, Y" }}</div>
+        <button type="button" id="nextWeek" class="px-2 py-1 rounded bg-secondary text-secondary-foreground">→</button>
+      </div>
+      <button type="button" id="toggleSidebar" class="px-3 py-2 rounded-lg border bg-card hover:shadow">Hide sidebar</button>
+    </div>
   </div>
 
-  <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
-    <div class="xl:col-span-1 space-y-4">
+  <div id="schedulerGrid" class="grid grid-cols-1 xl:grid-cols-4 gap-6">
+    <div id="sidebar" class="xl:col-span-1 space-y-4">
       <form id="scheduler-filters" class="space-y-4">
-        <div>
+        <div class="border rounded p-3 scheduler-card bg-card">
           <label class="block text-sm font-medium mb-1">Project</label>
-          <select name="project" class="w-full border rounded px-2 py-1">
+          <select name="project" class="w-full border scheduler-input rounded-md px-2 py-2 bg-background">
             <option value="">All projects</option>
             {% for p in projects %}
               <option value="{{ p.id }}" {% if selected_project == p.id %}selected{% endif %}>{{ p.name }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="border rounded p-3 scheduler-card bg-card">
             <label class="block text-sm font-medium mb-1">Open start</label>
-            <input type="time" name="open_start" value="{{ open_start }}" class="w-full border rounded px-2 py-1" />
+            <input type="time" name="open_start" value="{{ open_start }}" class="w-full border scheduler-input rounded-md px-2 py-2 bg-background" />
           </div>
-          <div>
+          <div class="border rounded p-3 scheduler-card bg-card">
             <label class="block text-sm font-medium mb-1">Open end</label>
-            <input type="time" name="open_end" value="{{ open_end }}" class="w-full border rounded px-2 py-1" />
+            <input type="time" name="open_end" value="{{ open_end }}" class="w-full border scheduler-input rounded-md px-2 py-2 bg-background" />
           </div>
         </div>
-        <div class="border rounded p-3">
+        <div class="border rounded p-3 scheduler-card bg-card">
           <div class="font-medium mb-2">Advanced availability (per day)</div>
           {% for d in days %}
           <div class="grid grid-cols-3 gap-2 items-center mb-2">
@@ -37,37 +77,48 @@
               <input type="checkbox" name="day{{ forloop.counter0 }}_enabled" checked class="mr-1" />
               <span class="text-sm">{{ d|date:"D" }}</span>
             </label>
-            <input type="time" name="day{{ forloop.counter0 }}_start" value="{{ open_start }}" class="w-full border rounded px-2 py-1" />
-            <input type="time" name="day{{ forloop.counter0 }}_end" value="{{ open_end }}" class="w-full border rounded px-2 py-1" />
+            <input type="time" name="day{{ forloop.counter0 }}_start" value="{{ open_start }}" class="w-full border scheduler-input rounded-md px-2 py-2 bg-background" />
+            <input type="time" name="day{{ forloop.counter0 }}_end" value="{{ open_end }}" class="w-full border scheduler-input rounded-md px-2 py-2 bg-background" />
           </div>
           {% endfor %}
         </div>
-  <button id="autoBtn" type="button" onclick="return window.scheduleNow && window.scheduleNow(event);" class="w-full px-3 py-2 rounded bg-primary text-primary-foreground">Auto-schedule</button>
+        <button id="autoBtn" type="button" onclick="return window.scheduleNow && window.scheduleNow(event);" class="w-full px-4 py-2.5 rounded-lg bg-primary text-primary-foreground shadow hover:shadow-md transition-shadow">⚡ Auto-schedule</button>
       </form>
 
-      <div class="border rounded p-3 space-y-2">
+      <div class="border rounded p-3 space-y-2 scheduler-card bg-card">
         <div class="font-medium">KPIs</div>
         <div class="text-sm">Total task hours: <span id="kpi_total_hours">{{ total_hours }}</span></div>
         <div class="text-sm">Weekly capacity: <span id="kpi_capacity">{{ capacity_hours }}</span></div>
         <div class="text-sm">Remaining: <span id="kpi_remaining">{{ remaining_hours }}</span></div>
       </div>
 
-      <form id="icsForm" method="post" class="border rounded p-3 space-y-2">
+      <form id="icsForm" method="post" class="border rounded p-3 space-y-2 scheduler-card bg-card">
         {% csrf_token %}
         <input type="hidden" name="action" value="export_ics" />
         <input type="hidden" id="schedule_json" name="schedule_json" value="{}" />
-        <button type="submit" class="w-full px-3 py-2 rounded bg-secondary text-secondary-foreground">Export ICS</button>
+        <button type="submit" class="w-full px-4 py-2.5 rounded-lg bg-secondary text-secondary-foreground shadow hover:shadow-md transition-shadow">📅 Export ICS</button>
       </form>
+
+      <div class="border rounded p-3 space-y-2 scheduler-card bg-card">
+        <div class="font-medium">Quick task templates</div>
+        <div id="quickTemplates" class="grid grid-cols-2 gap-2">
+          <div draggable="true" data-title="Deep work" data-hours="2" class="border rounded-md px-2 py-1 text-xs bg-muted cursor-move">Deep work (2h)</div>
+          <div draggable="true" data-title="Workout" data-hours="1" class="border rounded-md px-2 py-1 text-xs bg-muted cursor-move">Workout (1h)</div>
+          <div draggable="true" data-title="Admin" data-hours="1.5" class="border rounded-md px-2 py-1 text-xs bg-muted cursor-move">Admin (1.5h)</div>
+          <div draggable="true" data-title="Learning" data-hours="1" class="border rounded-md px-2 py-1 text-xs bg-muted cursor-move">Learning (1h)</div>
+        </div>
+        <div class="text-[11px] text-muted-foreground">Drag onto a day to add; you can edit the block title and duration after drop.</div>
+      </div>
     </div>
 
-    <div class="xl:col-span-3 space-y-6">
+  <div id="mainArea" class="xl:col-span-3 space-y-6">
       <div>
         <h2 class="text-lg font-medium mb-2">Tasks</h2>
-        <div id="taskTiles" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+        <div id="taskTiles" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {% for t in tasks %}
-          <div draggable="true" data-id="{{ t.id }}" data-title="{{ t.title }}" data-hours="{{ t.estimated_hours|default:0 }}" class="border rounded p-2 cursor-move bg-card">
+          <div draggable="true" data-id="{{ t.id }}" data-title="{{ t.title }}" data-hours="{{ t.estimated_hours|default:0 }}" class="border rounded-lg p-3 cursor-move bg-card scheduler-card hover:shadow-md transition-shadow">
             <div class="text-sm font-medium truncate">{{ t.title }}</div>
-            <div class="text-xs opacity-80">{{ t.estimated_hours|default:0 }}h{% if t.project %} • {{ t.project.name }}{% endif %}</div>
+            <div class="text-xs opacity-80 mt-0.5">{{ t.estimated_hours|default:0 }}h{% if t.project %} • {{ t.project.name }}{% endif %}</div>
           </div>
           {% empty %}
           <div class="text-sm text-muted-foreground">No tasks with estimated hours.</div>
@@ -77,11 +128,11 @@
 
       <div>
         <h2 class="text-lg font-medium mb-2">This Week</h2>
-        <div class="grid grid-cols-1 md:grid-cols-7 gap-2">
+        <div id="calendarContainer" class="grid grid-cols-1 md:grid-cols-7 gap-3">
           {% for d in days %}
-          <div class="border rounded p-2">
-            <div class="text-sm font-medium mb-2">{{ d|date:"D M j" }}</div>
-            <div class="dropzone relative border rounded h-[600px] bg-background/40 overflow-hidden" style="height:600px" data-date="{{ d|date:'Y-m-d' }}" data-index="{{ forloop.counter0 }}"></div>
+          <div class="scheduler-day border">
+            <div class="day-label text-sm font-medium mb-2">{{ d|date:"D M j" }}</div>
+            <div class="dropzone scheduler-zone relative border h-[600px] overflow-hidden" style="height:600px" data-date="{{ d|date:'Y-m-d' }}" data-index="{{ forloop.counter0 }}"></div>
           </div>
           {% endfor %}
         </div>
@@ -220,7 +271,7 @@
   }
 
   // Drag from tiles into a day
-  const tiles = document.querySelectorAll('#taskTiles [draggable]');
+  const tiles = document.querySelectorAll('#taskTiles [draggable], #quickTemplates [draggable]');
   const zones = document.querySelectorAll('.dropzone');
   tiles.forEach(el => {
     el.addEventListener('dragstart', e => {
@@ -282,6 +333,14 @@
       }
       const minutes = Math.round((data.minutes ?? ((data.hours||0)*60)));
       if (!minutes || minutes <= 0) return;
+      // If this was a quick template drop, let user rename and adjust duration
+      if (!data.id) {
+        const newTitle = prompt('Task title', data.title || 'Task');
+        if (newTitle !== null && newTitle !== '') data.title = newTitle;
+        const newDur = prompt('Duration (hours)', String((data.hours||0)));
+        const h = parseFloat(newDur||'');
+        if (!isNaN(h) && h>0) { data.minutes = Math.round(h*60); }
+      }
       // Compute desired start from mouse position within zone
       const rect = z.getBoundingClientRect();
       const relY = Math.min(Math.max((e.clientY - rect.top), 0), rect.height);
@@ -374,7 +433,7 @@
       });
       // Add a small counter label for quick visual confirmation
       const counter = document.createElement('div');
-      counter.className = 'absolute top-1 right-1 text-[11px] px-1.5 py-0.5 rounded';
+  counter.className = 'scheduler-counter absolute top-1 right-1 text-[11px] px-1.5 py-0.5';
       counter.style.background = 'rgba(0,0,0,0.35)';
       counter.style.color = '#fff';
       counter.style.pointerEvents = 'none';
@@ -399,7 +458,7 @@
         }
         const color = colors[(b.task_id || i) % colors.length];
   const block = document.createElement('div');
-        block.className = 'relative rounded shadow-sm ring-1';
+      block.className = 'relative rounded shadow-sm ring-1 scheduler-block';
         block.style.position = 'absolute';
         block.style.left = '4px';
         block.style.right = '4px';
@@ -513,6 +572,101 @@
   } catch (e) {
     console.warn('No saved schedule to restore or failed to parse.', e);
   }
+  })();
+
+  // Sidebar toggle and mode/week controls
+  (function(){
+  const sidebar = document.getElementById('sidebar');
+  const grid = document.getElementById('schedulerGrid');
+  const mainArea = document.getElementById('mainArea');
+    const btn = document.getElementById('toggleSidebar');
+    const prev = document.getElementById('prevWeek');
+    const next = document.getElementById('nextWeek');
+    const modeWeek = document.getElementById('modeWeek');
+    const modeDay = document.getElementById('modeDay');
+    const modeMonth = document.getElementById('modeMonth');
+    const container = document.getElementById('calendarContainer');
+    const weekStart = '{{ week_start|default:days.0|date:"Y-m-d" }}';
+    const prevWeek = '{{ prev_week|default:days.0|date:"Y-m-d" }}';
+    const nextWeek = '{{ next_week|default:days.6|date:"Y-m-d" }}';
+
+    if (btn) btn.addEventListener('click', () => {
+      if (!sidebar || !mainArea || !grid) return;
+      const willHide = sidebar.style.display !== 'none';
+      sidebar.style.display = willHide ? 'none' : '';
+      btn.textContent = willHide ? 'Show sidebar' : 'Hide sidebar';
+      if (willHide) {
+        // Collapse to a single column so main fills full width
+        grid.className = 'grid grid-cols-1 xl:grid-cols-1 gap-6';
+        mainArea.classList.remove('xl:col-span-3','xl:col-span-4');
+        mainArea.classList.add('xl:col-span-1');
+      } else {
+        // Restore 1+3 column layout
+        grid.className = 'grid grid-cols-1 xl:grid-cols-4 gap-6';
+        mainArea.classList.remove('xl:col-span-1','xl:col-span-4');
+        mainArea.classList.add('xl:col-span-3');
+      }
+    });
+
+    function navTo(weekIso){
+      const params = new URLSearchParams(location.search);
+      params.set('week', weekIso);
+      location.search = params.toString();
+    }
+    if (prev) prev.addEventListener('click', () => navTo(prevWeek));
+    if (next) next.addEventListener('click', () => navTo(nextWeek));
+
+    function setMode(mode){
+      // Week: 7 columns; Day: 1 column with the current day; Month: simple calendar grid with day totals
+      if (!container) return;
+      const zones = container.querySelectorAll('.dropzone');
+      if (mode === 'week'){
+        container.className = 'grid grid-cols-1 md:grid-cols-7 gap-3';
+        zones.forEach(z=> {
+          z.parentElement.style.display='';
+          // restore content/height if coming back from month mode
+          if (z.dataset.origHtml !== undefined) {
+            z.innerHTML = z.dataset.origHtml;
+            delete z.dataset.origHtml;
+          }
+          z.style.height = '600px';
+        });
+        modeWeek.classList.add('bg-primary','text-primary-foreground');
+        modeDay.classList.remove('bg-primary','text-primary-foreground');
+        modeMonth.classList.remove('bg-primary','text-primary-foreground');
+      } else if (mode === 'day'){
+        container.className = 'grid grid-cols-1 gap-3';
+        // Show only first day column for now
+        zones.forEach((z,i)=> {
+          z.parentElement.style.display = (i===0?'':'none');
+          if (z.dataset.origHtml !== undefined) {
+            z.innerHTML = z.dataset.origHtml;
+            delete z.dataset.origHtml;
+          }
+          z.style.height = '600px';
+        });
+        modeDay.classList.add('bg-primary','text-primary-foreground');
+        modeWeek.classList.remove('bg-primary','text-primary-foreground');
+        modeMonth.classList.remove('bg-primary','text-primary-foreground');
+      } else if (mode === 'month'){
+        // Simple month view: 7 cols x 5/6 rows with day totals; blocks disabled for now
+        container.className = 'grid grid-cols-7 gap-2';
+        zones.forEach(z=>{
+          // store original content once
+          if (z.dataset.origHtml === undefined) {
+            z.dataset.origHtml = z.innerHTML;
+          }
+          z.style.height = '220px';
+          z.innerHTML = '<div class="p-2 text-xs text-muted-foreground">Monthly view (read-only)</div>';
+        });
+        modeMonth.classList.add('bg-primary','text-primary-foreground');
+        modeWeek.classList.remove('bg-primary','text-primary-foreground');
+        modeDay.classList.remove('bg-primary','text-primary-foreground');
+      }
+    }
+    if (modeWeek) modeWeek.addEventListener('click', ()=>setMode('week'));
+    if (modeDay) modeDay.addEventListener('click', ()=>setMode('day'));
+    if (modeMonth) modeMonth.addEventListener('click', ()=>setMode('month'));
   })();
 </script>
 {% if saved_schedule %}

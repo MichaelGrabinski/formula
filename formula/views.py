@@ -2281,6 +2281,9 @@ class ProjectSchedulerView(PersonalBaseView):
             projects=PersonalProject.objects.all().order_by('name'),
             selected_project=int(pid) if pid else None,
             saved_schedule=saved_schedule,
+            week_start=monday.isoformat(),
+            prev_week=(monday - timedelta(days=7)).isoformat(),
+            next_week=(monday + timedelta(days=7)).isoformat(),
         )
         return self.render_to_response(ctx)
 
