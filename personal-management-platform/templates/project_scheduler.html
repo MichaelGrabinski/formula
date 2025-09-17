@@ -32,7 +32,7 @@
       <h1 class="text-2xl font-semibold">Project Scheduler</h1>
       <div class="text-sm text-muted-foreground">Window: <span id="openWindowLabel">{{ open_start }} – {{ open_end }}</span></div>
     </div>
-    <div class="flex items-center gap-2">
+  <div class="flex items-center gap-2 flex-wrap">
       <div class="inline-flex items-center gap-1 border rounded-lg px-1 py-1 bg-card">
         <button type="button" id="modeWeek" class="px-2 py-1 text-sm rounded-md bg-primary text-primary-foreground" data-mode="week">Week</button>
         <button type="button" id="modeDay" class="px-2 py-1 text-sm rounded-md" data-mode="day">Day</button>
@@ -42,6 +42,27 @@
         <button type="button" id="prevWeek" class="px-2 py-1 rounded bg-secondary text-secondary-foreground">←</button>
         <div id="weekLabel" class="text-sm px-2">{{ days.0|date:"M j" }} – {{ days.6|date:"M j, Y" }}</div>
         <button type="button" id="nextWeek" class="px-2 py-1 rounded bg-secondary text-secondary-foreground">→</button>
+      </div>
+      <button type="button" id="todayBtn" class="px-3 py-1.5 rounded-lg border bg-card">Today</button>
+      <div id="dayPickerWrap" class="hidden items-center gap-2">
+        <label class="text-sm">Day:</label>
+        <select id="dayPicker" class="border rounded px-2 py-1 bg-background text-sm">
+          <option value="0">Mon</option>
+          <option value="1">Tue</option>
+          <option value="2">Wed</option>
+          <option value="3">Thu</option>
+          <option value="4">Fri</option>
+          <option value="5">Sat</option>
+          <option value="6">Sun</option>
+        </select>
+      </div>
+      <div class="inline-flex items-center gap-2">
+        <label class="text-sm">Zoom:</label>
+        <select id="zoomSelect" class="border rounded px-2 py-1 bg-background text-sm">
+          <option value="480">Compact</option>
+          <option value="600" selected>Comfort</option>
+          <option value="760">Roomy</option>
+        </select>
       </div>
       <button type="button" id="toggleSidebar" class="px-3 py-2 rounded-lg border bg-card hover:shadow">Hide sidebar</button>
     </div>
@@ -269,6 +290,38 @@
     const {r,g,b} = hexToRgb(hex);
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
+  function minutesToHM(min){ const h=Math.floor(min/60), m=min%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+  
+  // Highlight overlaps within a zone
+  function highlightConflicts(z){
+    try {
+      const blocks = Array.from(z.children).filter(el=>el.dataset && el.dataset.duration);
+      const ivals = blocks.map(el=>({ el, start: parseInt(el.dataset.start||'0',10)||0, end: (parseInt(el.dataset.start||'0',10)||0) + (parseInt(el.dataset.duration||'0',10)||0) }))
+        .sort((a,b)=>a.start-b.start);
+      ivals.forEach(a=>{ let conflict=false; for (const b of ivals){ if (a===b) continue; if (!(a.end<=b.start || a.start>=b.end)) { conflict=true; break; } } a.el.style.outline = conflict ? '2px solid rgba(239,68,68,0.9)' : ''; });
+    } catch {}
+  }
+  // Persist current on-screen schedule to localStorage
+  function persistSchedule(){
+    try {
+      const sched = { days: [] };
+      document.querySelectorAll('.dropzone').forEach(z=>{
+        const date = z.getAttribute('data-date')||'';
+        const idx = parseInt(z.getAttribute('data-index')||'0',10);
+        const form = document.getElementById('scheduler-filters');
+        const { startMin } = getDayWindow(idx, form);
+        const blocks = Array.from(z.children).filter(el=>el.dataset && el.dataset.duration).map(el=>{
+          const dur = parseInt(el.dataset.duration||'0',10)||0;
+          const sOff = parseInt(el.dataset.start||'0',10)||0;
+          const sAbs = startMin + sOff;
+          return { task_id: parseInt(el.dataset.id||'0',10)||0, title: (el.querySelector('.font-medium')?.textContent)||'Task', duration: dur, start: minutesToHM(sAbs), end: minutesToHM(sAbs+dur) };
+        });
+        sched.days.push({ date, blocks });
+      });
+      window.__lastSchedule = sched;
+      localStorage.setItem('scheduler:last', JSON.stringify(sched));
+    } catch {}
+  }
 
   // Drag from tiles into a day
   const tiles = document.querySelectorAll('#taskTiles [draggable], #quickTemplates [draggable]');
@@ -295,7 +348,7 @@
     const colors = ['#6ee7b7','#93c5fd','#fca5a5','#a78bfa','#fdba74','#38bdf8','#f472b6','#86efac'];
     const color = colors[(taskId||0) % colors.length];
     const block = document.createElement('div');
-    block.className = 'relative rounded shadow-sm ring-1';
+    block.className = 'relative rounded shadow-sm ring-1 scheduler-block';
     block.style.position = 'absolute';
     block.style.left = '4px';
     block.style.right = '4px';
@@ -315,8 +368,57 @@
     block.innerHTML = `<div class="text-xs p-1">
       <div class="font-medium truncate">${title}</div>
       <div class="opacity-80">${to12h(`${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`)} – ${to12h(`${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`)} • ${Math.round((duration/60)*10)/10}h</div>
+      <button type="button" class="absolute top-0.5 right-0.5 text-[10px] px-1 rounded bg-black/40 text-white">Edit</button>
+      <div class="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize" title="Drag to resize"></div>
     </div>`;
+    // Inline edit
+    block.querySelector('button')?.addEventListener('click', () => {
+      const newTitle = prompt('Task title', title);
+      if (newTitle !== null && newTitle !== '') {
+        title = newTitle;
+        block.querySelector('.font-medium').textContent = title;
+      }
+      const newH = prompt('Duration (hours)', String(Math.round((parseInt(block.dataset.duration||'0',10)/60)*100)/100));
+      const h = parseFloat(newH||'');
+      if (!isNaN(h) && h>0) {
+        const newMinutes = Math.round(h*60);
+        const newHeight = Math.max((newMinutes/totalMin) * 100, 6);
+        block.style.height = `${newHeight}%`;
+        block.dataset.duration = String(newMinutes);
+        const startAbs2 = startMin + parseInt(block.dataset.start||'0',10);
+        const endAbs2 = startAbs2 + newMinutes;
+        const endH2 = Math.floor(endAbs2/60), endM2 = endAbs2%60;
+        block.querySelector('.opacity-80').textContent = `${to12h(`${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`)} – ${to12h(`${String(endH2).padStart(2,'0')}:${String(endM2).padStart(2,'0')}`)} • ${Math.round((newMinutes/60)*10)/10}h`;
+        highlightConflicts(z);
+        persistSchedule();
+      }
+    });
+    // Resize handle
+    (function(){
+      const handle = block.querySelector('.cursor-ns-resize');
+      if (!handle) return;
+      let resizing = false, startY=0, startDur=parseInt(block.dataset.duration||'0',10)||0;
+      handle.addEventListener('mousedown', (ev)=>{ ev.preventDefault(); resizing=true; startY=ev.clientY; startDur=parseInt(block.dataset.duration||'0',10)||0; document.body.style.userSelect='none'; });
+      document.addEventListener('mousemove', (ev)=>{
+        if (!resizing) return;
+        const zoneRect = z.getBoundingClientRect();
+        const minutesPerPx = totalMin / zoneRect.height;
+        let newDur = Math.round((startDur + (ev.clientY - startY) * minutesPerPx) / 15) * 15;
+        newDur = Math.max(15, Math.min(newDur, totalMin - parseInt(block.dataset.start||'0',10)));
+        const newHeight = Math.max((newDur/totalMin)*100, 6);
+        block.style.height = `${newHeight}%`;
+        block.dataset.duration = String(newDur);
+        const startAbs2 = startMin + parseInt(block.dataset.start||'0',10);
+        const endAbs2 = startAbs2 + newDur;
+        const endH2 = Math.floor(endAbs2/60), endM2 = endAbs2%60;
+        block.querySelector('.opacity-80').textContent = `${to12h(`${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`)} – ${to12h(`${String(endH2).padStart(2,'0')}:${String(endM2).padStart(2,'0')}`)} • ${Math.round((newDur/60)*10)/10}h`;
+        highlightConflicts(z);
+      });
+      document.addEventListener('mouseup', ()=>{ if (resizing){ resizing=false; document.body.style.userSelect=''; persistSchedule(); } });
+    })();
     z.appendChild(block);
+    highlightConflicts(z);
+    persistSchedule();
     return duration;
   }
   zones.forEach(z => {
@@ -349,7 +451,9 @@
       const { totalMin } = getDayWindow(idx, form);
       const pct = rect.height ? (relY / rect.height) : 0;
       const desired = Math.round((pct * totalMin) / 15) * 15; // snap to 15 minutes
-      placeBlockAt(z, minutes, data.title || 'Task', parseInt(data.id||'0',10), desired);
+  placeBlockAt(z, minutes, data.title || 'Task', parseInt(data.id||'0',10), desired);
+  highlightConflicts(z);
+  persistSchedule();
     });
   });
 
@@ -431,7 +535,7 @@
         const [bh,bm]=(b.start||'00:00').split(':').map(n=>parseInt(n,10));
         return (ah*60+am) - (bh*60+bm);
       });
-      // Add a small counter label for quick visual confirmation
+  // Add a small counter label for quick visual confirmation
       const counter = document.createElement('div');
   counter.className = 'scheduler-counter absolute top-1 right-1 text-[11px] px-1.5 py-0.5';
       counter.style.background = 'rgba(0,0,0,0.35)';
@@ -442,57 +546,21 @@
       z.appendChild(counter);
       let lastBottomPct = 0;
       sortedBlocks.forEach((b, i) => {
-  const startParts = (b.start||'18:00').split(':').map(n=>parseInt(n,10));
-  const startAbs = startParts[0]*60 + startParts[1];
-  const offset = Math.max(startAbs - startMin, 0);
-        let height = Math.max((b.duration/totalMin) * 100, 6);
-        let top = (offset/totalMin) * 100;
-        // keep a tiny vertical gap between sequential blocks
-        const minGap = 1; // 1%
-        if (top < lastBottomPct + minGap) {
-          top = lastBottomPct + minGap;
-        }
-        // Clamp to container bounds
-        if (top + height > 100) {
-          height = Math.max(3, 100 - top);
-        }
-        const color = colors[(b.task_id || i) % colors.length];
-  const block = document.createElement('div');
-      block.className = 'relative rounded shadow-sm ring-1 scheduler-block';
-        block.style.position = 'absolute';
-        block.style.left = '4px';
-        block.style.right = '4px';
-        block.style.top = `${top}%`;
-        block.style.height = `${height}%`;
-  block.style.minHeight = '20px';
-  block.style.backgroundColor = alphaBg(color, 0.25);
-  block.style.border = `1px solid ${color}`;
-  block.style.borderColor = color;
-  block.style.boxShadow = `0 1px 2px 0 ${alphaBg(color,0.4)}`;
-  block.style.zIndex = '10';
-        block.dataset.id = b.task_id;
-  block.dataset.duration = String(b.duration);
-  block.dataset.start = String(Math.max(0, Math.min(offset, Math.max(totalMin - b.duration, 0))));
-        block.draggable = true;
-        block.addEventListener('dragstart', ev => {
-          window.__dragBlockEl = block;
-          ev.dataTransfer.setData('text/plain', JSON.stringify({ id: b.task_id, title: b.title, minutes: b.duration, move: true }));
-        });
-        block.innerHTML = `<div class="text-xs p-1">
-          <div class="font-medium truncate">${b.title}</div>
-          <div class="opacity-80">${to12h(b.start)} – ${to12h(b.end)} • ${Math.round((b.duration/60)*10)/10}h</div>
-        </div>`;
-        z.appendChild(block);
-        lastBottomPct = top + height;
+        const [sh, sm] = String(b.start||'00:00').split(':').map(n=>parseInt(n,10));
+        const startAbs = sh*60 + sm;
+        const offset = Math.max(startAbs - startMin, 0);
+        placeBlockAt(z, parseInt(b.duration||'0',10)||0, b.title || 'Task', parseInt(b.task_id||i,10), offset);
         placed++;
       });
+      highlightConflicts(z);
     });
   console.log('Placed blocks:', placed);
   if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Auto-schedule'; btn.dataset.running = '0'; }
     if (placed === 0) {
       alert('No tasks were scheduled. Ensure your tasks have estimated_hours > 0 and your availability has capacity.');
     }
-    window.__lastSchedule = sched;
+  window.__lastSchedule = sched;
+  try { localStorage.setItem('scheduler:last', JSON.stringify(sched)); } catch {}
     try {
       const total = Array.from(document.querySelectorAll('#taskTiles [draggable]'))
         .reduce((acc, el) => acc + (parseFloat(el.dataset.hours||'0')||0), 0);
@@ -556,7 +624,7 @@
         counter.style.zIndex = '20';
         counter.textContent = `${(day.blocks||[]).length} blk${(day.blocks||[]).length===1?'':'s'}`;
         z.appendChild(counter);
-        (day.blocks||[]).forEach((b, i) => {
+  (day.blocks||[]).forEach((b, i) => {
           const [sh, sm] = String(b.start||'18:00').split(':').map(n=>parseInt(n,10));
           const startAbs = sh*60 + sm;
           const offset = Math.max(0, startAbs - startMin);
@@ -564,6 +632,7 @@
           placeBlockAt(z, duration, b.title || 'Task', parseInt(b.task_id||i,10), offset);
           count++;
         });
+  highlightConflicts(z);
       });
       console.log('Restored saved schedule blocks:', count);
       // Mirror into lastSchedule so ICS export works without a new autoschedule
@@ -586,9 +655,13 @@
     const modeDay = document.getElementById('modeDay');
     const modeMonth = document.getElementById('modeMonth');
     const container = document.getElementById('calendarContainer');
-    const weekStart = '{{ week_start|default:days.0|date:"Y-m-d" }}';
-    const prevWeek = '{{ prev_week|default:days.0|date:"Y-m-d" }}';
-    const nextWeek = '{{ next_week|default:days.6|date:"Y-m-d" }}';
+  const weekStart = '{{ week_start|default:days.0|date:"Y-m-d" }}';
+  const prevWeek = '{{ prev_week|default:days.0|date:"Y-m-d" }}';
+  const nextWeek = '{{ next_week|default:days.6|date:"Y-m-d" }}';
+  const dayPickerWrap = document.getElementById('dayPickerWrap');
+  const dayPicker = document.getElementById('dayPicker');
+  const zoomSelect = document.getElementById('zoomSelect');
+  const todayBtn = document.getElementById('todayBtn');
 
     if (btn) btn.addEventListener('click', () => {
       if (!sidebar || !mainArea || !grid) return;
@@ -615,7 +688,18 @@
     }
     if (prev) prev.addEventListener('click', () => navTo(prevWeek));
     if (next) next.addEventListener('click', () => navTo(nextWeek));
+    if (todayBtn) todayBtn.addEventListener('click', () => {
+      const now = new Date();
+      const monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay()+6)%7));
+      const iso = monday.toISOString().slice(0,10);
+      navTo(iso);
+    });
 
+    function applyZoom(){
+      const h = parseInt(zoomSelect?.value || '600', 10);
+      document.querySelectorAll('.dropzone').forEach(z=>{ z.style.height = `${h}px`; z.classList.toggle('h-[600px]', false); });
+      try { localStorage.setItem('scheduler:zoom', String(h)); } catch {}
+    }
     function setMode(mode){
       // Week: 7 columns; Day: 1 column with the current day; Month: simple calendar grid with day totals
       if (!container) return;
@@ -629,25 +713,28 @@
             z.innerHTML = z.dataset.origHtml;
             delete z.dataset.origHtml;
           }
-          z.style.height = '600px';
+          z.style.height = `${parseInt(zoomSelect?.value||'600',10)}px`;
         });
         modeWeek.classList.add('bg-primary','text-primary-foreground');
         modeDay.classList.remove('bg-primary','text-primary-foreground');
         modeMonth.classList.remove('bg-primary','text-primary-foreground');
+        dayPickerWrap?.classList.add('hidden');
       } else if (mode === 'day'){
         container.className = 'grid grid-cols-1 gap-3';
         // Show only first day column for now
+        const showIndex = parseInt(dayPicker?.value||'0',10);
         zones.forEach((z,i)=> {
-          z.parentElement.style.display = (i===0?'':'none');
+          z.parentElement.style.display = (i===showIndex?'':'none');
           if (z.dataset.origHtml !== undefined) {
             z.innerHTML = z.dataset.origHtml;
             delete z.dataset.origHtml;
           }
-          z.style.height = '600px';
+          z.style.height = `${parseInt(zoomSelect?.value||'600',10)}px`;
         });
         modeDay.classList.add('bg-primary','text-primary-foreground');
         modeWeek.classList.remove('bg-primary','text-primary-foreground');
         modeMonth.classList.remove('bg-primary','text-primary-foreground');
+        dayPickerWrap?.classList.remove('hidden');
       } else if (mode === 'month'){
         // Simple month view: 7 cols x 5/6 rows with day totals; blocks disabled for now
         container.className = 'grid grid-cols-7 gap-2';
@@ -667,6 +754,14 @@
     if (modeWeek) modeWeek.addEventListener('click', ()=>setMode('week'));
     if (modeDay) modeDay.addEventListener('click', ()=>setMode('day'));
     if (modeMonth) modeMonth.addEventListener('click', ()=>setMode('month'));
+    if (dayPicker) dayPicker.addEventListener('change', ()=>setMode('day'));
+    if (zoomSelect){
+      const savedZ = parseInt(localStorage.getItem('scheduler:zoom')||'600',10);
+      zoomSelect.value = String(savedZ);
+      applyZoom();
+      zoomSelect.addEventListener('change', applyZoom);
+    }
+    dayPickerWrap?.classList.add('hidden');
   })();
 </script>
 {% if saved_schedule %}
