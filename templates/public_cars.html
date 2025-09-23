@@ -1,0 +1,45 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Human Futures LLC — Cars for Sale</title>
+  <link rel="stylesheet" href="{% static 'css/landing.css' %}" />
+  <!-- Minimal Tailwind-style utility classes assumed in landing.css -->
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-6xl mx-auto px-6 py-10">
+    <header class="flex items-center justify-between">
+      <a href="/" class="text-gray-600 hover:underline">← Home</a>
+      <h1 class="text-2xl font-semibold">Cars for Sale</h1>
+      <div></div>
+    </header>
+
+    <p class="mt-3 text-gray-600">Browse vehicles we currently have listed. Contact us to schedule a viewing or make an offer.</p>
+
+    <div class="mt-6 grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      {% if cars %}
+        {% for car in cars %}
+          <a href="{% url 'public_car_detail' car.pk %}" class="block bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-lg transition">
+            {% if car.image %}
+              <img src="{{ car.image.url }}" alt="{{ car.title }}" class="w-full h-44 object-cover" />
+            {% else %}
+              <img src="{% static 'img/car-placeholder.png' %}" alt="{{ car.title }}" class="w-full h-44 object-cover" />
+            {% endif %}
+            <div class="p-4">
+              <h3 class="text-lg font-medium">{{ car.title }}</h3>
+              <div class="text-sm text-gray-500 mt-1">{% if car.mileage %}{{ car.mileage }} miles • {% endif %}{% if car.price %}{{ car.price }}{% endif %}</div>
+              <p class="mt-2 text-gray-700 text-sm">{{ car.description|truncatechars:140 }}</p>
+            </div>
+          </a>
+        {% endfor %}
+      {% else %}
+        <div class="bg-white p-4 rounded-lg shadow">No cars listed yet. Check back soon.</div>
+      {% endif %}
+    </div>
+
+    <footer class="mt-10 text-gray-600">© {{ now|date:"Y" }} Human Futures LLC</footer>
+  </div>
+</body>
+</html>

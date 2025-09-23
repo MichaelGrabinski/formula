@@ -29,6 +29,8 @@ from unfold.widgets import (
 from formula.models import Driver
 from .utils import RUBRICS
 
+from formula.models import Lead, Car
+
 # =====================
 # Personal section forms
 # =====================
@@ -337,6 +339,18 @@ class LoginForm(AuthenticationForm):
         if settings.LOGIN_USERNAME and settings.LOGIN_PASSWORD:
             self.fields["username"].initial = settings.LOGIN_USERNAME
             self.fields["password"].initial = settings.LOGIN_PASSWORD
+
+
+class LeadForm(forms.ModelForm):
+    class Meta:
+        model = Lead
+        fields = ['name', 'email', 'phone', 'zip_code', 'message']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # simple bootstrap-like defaults for public form rendering
+        for f in self.fields.values():
+            f.widget.attrs.update({'class': 'form-control'})
 
 
 class PropertyForm(forms.ModelForm):

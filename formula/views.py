@@ -55,6 +55,64 @@ from formula.sites import formula_admin_site
 from .ai import chat_with_openai, rag_chat
 from datetime import datetime, date, time
 from django.db import transaction
+from django.views import View
+
+
+class PublicHomePageView(View):
+    """Simple public landing page for Human Futures LLC."""
+    def get(self, request, *args, **kwargs):
+        return render(request, 'public_home.html')
+
+
+class PublicServicesView(View):
+    def get(self, request, *args, **kwargs):
+        return render(request, 'public_services.html')
+
+
+class PublicCarsView(View):
+    def get(self, request, *args, **kwargs):
+        from .models import Car
+        cars = list(Car.objects.filter(is_active=True).order_by('-created_at')[:50])
+        return render(request, 'public_cars.html', {'cars': cars})
+
+
+class ContactSubmitView(View):
+    """Accepts POST from public landing/contact form and stores a Lead."""
+    def post(self, request, *args, **kwargs):
+        from .forms import LeadForm
+        form = LeadForm(request.POST)
+        if form.is_valid():
+            lead = form.save(commit=False)
+            lead.source = request.POST.get('source') or 'public_site'
+            # attempt to save lead and notify via email if configured
+            try:
+                lead.save()
+            except Exception:
+                return redirect(request.META.get('HTTP_REFERER', '/'))
+
+            # send notification to SALES_EMAIL if provided in settings
+            from django.conf import settings
+            sales_email = getattr(settings, 'SALES_EMAIL', None)
+            if sales_email:
+                try:
+                    from django.core.mail import send_mail
+
+                    subject = f"New lead: {lead.name or 'No name'}"
+                    body = (
+                        f"Name: {lead.name}\nEmail: {lead.email}\nPhone: {lead.phone}\n"
+                        f"ZIP: {lead.zip_code}\nMessage:\n{lead.message}\nSource: {lead.source}"
+                    )
+                    send_mail(subject, body, getattr(settings, 'DEFAULT_FROM_EMAIL', None), [sales_email])
+                except Exception:
+                    # swallow email errors so the public UX isn't broken
+                    pass
+
+            # simple success flow: redirect back to referrer
+            return redirect(request.META.get('HTTP_REFERER', '/'))
+        # on invalid, re-render home with errors
+        from .models import Car
+        cars = list(Car.objects.filter(is_active=True).order_by('-created_at')[:6])
+        return render(request, 'public_home.html', {'lead_form': form, 'cars': cars})
 
 
 class AdminContextMixin:
@@ -1729,6 +1787,7 @@ class PersonalProjectsView(PersonalBaseView):
             if pid:
                 qs = qs.filter(project_id=pid)
             for t in qs.order_by('project_id', 'start_date', 'due_date', 'id'):
+               
                 data.append({
                     'id': t.id,
                     'project_id': t.project_id,
@@ -2840,15 +2899,10 @@ class SavingsGoalsV2View(SavingsGoalsView):
         return redirect('goals_v2')
 
 
-from django.views.decorators.csrf import ensure_csrf_cookie
-from django.utils.decorators import method_decorator
+# New: Savings Goals embed view (public)
+class SavingsGoalsEmbedView(PersonalBaseView):
+    template_name = 'goals_embed.html'
 
-
-@method_decorator(ensure_csrf_cookie, name='dispatch')
-@method_decorator(csrf_exempt, name='dispatch')
-class SavingsGoalsV2EmbedView(SavingsGoalsV2View):
-    template_name = 'goals_v2_original.html'
-    # Serve static original front-end (no dynamic context needed)
     def get(self, request, *args, **kwargs):
         from .models import SavingsGoal
         goals = list(SavingsGoal.objects.all().order_by('priority', 'created_at'))
@@ -3451,3 +3505,23 @@ def tv_dashboard(request):
         'weekly_pool': float(plan.weekly_amount) if plan else 0,
     }
     return render(request, 'dashboard/tv.html', context)
+
+
+# New public views for landing, services, cars pages
+from django.views import View
+
+
+class PublicHomePageView(View):
+    """Simple public landing page for Human Futures LLC."""
+    def get(self, request, *args, **kwargs):
+        return render(request, 'public_home.html')
+
+
+class PublicServicesView(View):
+    def get(self, request, *args, **kwargs):
+        return render(request, 'public_services.html')
+
+
+class PublicCarsView(View):
+    def get(self, request, *args, **kwargs):
+        return render(request, 'public_cars.html')
