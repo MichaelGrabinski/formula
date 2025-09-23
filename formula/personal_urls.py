@@ -24,7 +24,7 @@ urlpatterns = [
     # Savings Goals
     path("goals/", views.SavingsGoalsView.as_view(), name="goals"),
     path("goals/v2/", views.SavingsGoalsV2View.as_view(), name="goals_v2"),
-    path("goals/v2/react/", views.SavingsGoalsV2EmbedView.as_view(), name="goals_v2_embed"),
+    path("goals/v2/react/", views.SavingsGoalsEmbedView.as_view(), name="goals_v2_embed"),
     # Lightweight API for the embedded original goals dashboard
     path("goals/v2/api/list", views.api_goals_list, name="goals_v2_api_list"),
     path("goals/v2/api/add", views.api_goals_add, name="goals_v2_api_add"),

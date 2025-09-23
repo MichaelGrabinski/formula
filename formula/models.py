@@ -401,6 +401,40 @@ class Load(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class Lead(AuditedModel):
+    """Public contact/lead captured from the landing page."""
+    name = models.CharField(max_length=255)
+    email = models.EmailField(max_length=255, blank=True, null=True)
+    phone = models.CharField(max_length=64, blank=True, null=True)
+    zip_code = models.CharField(max_length=20, blank=True, null=True)
+    message = models.TextField(blank=True, default='')
+    source = models.CharField(max_length=64, blank=True, null=True)
+    handled = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'leads'
+
+    def __str__(self):
+        return f"{self.name} <{self.email or self.phone or ''}>"
+
+
+class Car(AuditedModel):
+    """Simple Car listing for Cars for Sale page."""
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    year = models.PositiveIntegerField(blank=True, null=True)
+    mileage = models.PositiveIntegerField(blank=True, null=True)
+    price = MoneyField(max_digits=14, decimal_places=2, null=True, blank=True, default_currency=None)
+    image = models.ImageField(upload_to='cars/', null=True, blank=True, default=None)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'cars'
+
+    def __str__(self):
+        return self.title
+
+
 class BusinessAsset(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)

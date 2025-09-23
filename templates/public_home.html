@@ -1,0 +1,113 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Human Futures LLC — Home</title>
+  <link rel="stylesheet" href="{% static 'css/landing.css' %}" />
+  <style>
+    /* Minimal fallback styling in case landing.css not present */
+    :root{ --accent:#06b6d4; --dark:#0f172a; --muted:#6b7280 }
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:var(--dark);}
+    .container{max-width:1100px;margin:0 auto;padding:28px}
+    header{display:flex;align-items:center;justify-content:space-between}
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand h1{margin:0;font-size:1.25rem}
+    nav a{margin-left:18px;color:var(--muted);text-decoration:none}
+    .hero{display:flex;gap:28px;align-items:center;margin-top:28px}
+    .hero .copy{flex:1}
+    .cta{background:var(--accent);color:white;padding:12px 18px;border-radius:8px;display:inline-block;text-decoration:none}
+    .services{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:28px}
+    .card{padding:16px;border-radius:8px;border:1px solid #e6eef0;background:#fff}
+    footer{margin-top:48px;padding-top:20px;border-top:1px solid #e6eef0;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="max-w-5xl mx-auto px-6 py-10">
+    <header>
+      <div class="brand">
+        <img src="{% static 'img/logo-placeholder.png' %}" width="56" height="56" alt="Human Futures logo"/>
+        <div>
+          <h1>Human Futures LLC</h1>
+          <div style="font-size:0.9rem;color:var(--muted)">Construction • Home Repair • Freight & Dump Truck Services</div>
+        </div>
+      </div>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/services/">Services</a>
+        <a href="/cars/">Cars for Sale</a>
+        <a href="/admin/login/">Client Login</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+  <div class="copy">
+        <h2 style="margin-top:0">Reliable work. Honest pricing. Human-first service.</h2>
+        <p style="color:var(--muted);max-width:56ch">Human Futures LLC provides construction, home repair, logistic freight hauling, and dump truck services for trash and construction removal. We prioritize safety, timely delivery, and clear communication.</p>
+        <p style="margin-top:18px"><a class="cta" href="/services/">See our services</a></p>
+        <div style="margin-top:18px">
+          {% if lead_form %}
+            <form method="post" action="{% url 'contact_submit' %}">
+              {% csrf_token %}
+              {{ lead_form.non_field_errors }}
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                {{ lead_form.name.errors }}
+                {{ lead_form.name }}
+                {{ lead_form.email.errors }}
+                {{ lead_form.email }}
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                {{ lead_form.phone }}
+                {{ lead_form.zip_code }}
+              </div>
+              <div style="margin-bottom:8px">{{ lead_form.message }}</div>
+              <input type="hidden" name="source" value="public_home" />
+              <button class="cta" type="submit">Contact Us</button>
+            </form>
+          {% else %}
+            <!-- Quick CTA fallback -->
+            <a class="cta" href="/services/">Request an estimate</a>
+          {% endif %}
+        </div>
+      </div>
+      <div style="width:360px;background:#f8fafc;border-radius:12px;padding:14px;box-shadow:0 6px 16px rgba(15,23,42,0.04)">
+        <h3 style="margin:0 0 8px 0">Get a free estimate</h3>
+        <form action="/" method="get">
+          <input name="zip" placeholder="ZIP code" style="width:100%;padding:10px;border-radius:8px;border:1px solid #e6eef0;margin-bottom:8px" />
+          <button class="cta" style="width:100%">Request Estimate</button>
+        </form>
+      </div>
+    </section>
+
+    <section>
+      <h3 style="margin-top:36px">Our core services</h3>
+      <div class="services">
+        <div class="card">
+          <h4>Construction & Remodel</h4>
+          <p style="color:var(--muted)">Full-service residential construction: remodels, additions, framing, and finishing work.</p>
+        </div>
+        <div class="card">
+          <h4>Home Repairs</h4>
+          <p style="color:var(--muted)">Quick fixes, plumbing, electrical, drywall, flooring, and appliance help.</p>
+        </div>
+        <div class="card">
+          <h4>Freight & Hauling</h4>
+          <p style="color:var(--muted)">Licensed freight hauling for local delivery and regional logistics.</p>
+        </div>
+        <div class="card">
+          <h4>Dump Truck Services</h4>
+          <p style="color:var(--muted)">Debris removal, construction spoil hauling, and roll-off services.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>© {{ now|date:"Y" }} Human Futures LLC</div>
+        <div style="font-size:0.9rem;color:var(--muted)">Phone: (555) 555-0123 • Email: info@humanfutures.example</div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
