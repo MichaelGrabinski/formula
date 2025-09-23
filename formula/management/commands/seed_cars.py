@@ -1,6 +1,10 @@
 from decimal import Decimal
 from django.core.management.base import BaseCommand
 
+import os
+from django.core.files import File
+from django.conf import settings
+
 from formula.models import Car
 
 
@@ -43,6 +47,18 @@ class Command(BaseCommand):
             }
             car, created_bool = Car.objects.get_or_create(title=s["title"], defaults=defaults)
             if created_bool:
+                # attach placeholder image from static/img if exists
+                try:
+                    static_img = os.path.join(settings.BASE_DIR, "static", "img", "car-placeholder.png")
+                    if os.path.exists(static_img):
+                        with open(static_img, "rb") as f:
+                            django_file = File(f)
+                            # create a filename under media/cars/
+                            filename = f"cars/{car.title.replace(' ', '_')[:50]}.png"
+                            car.image.save(name=filename, content=django_file, save=True)
+                except Exception:
+                    # ignore image attach errors
+                    pass
                 created += 1
 
         self.stdout.write(self.style.SUCCESS(f"Created {created} sample cars."))

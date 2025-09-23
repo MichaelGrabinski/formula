@@ -33,19 +33,54 @@ if (Test-Path $activate) {
     Write-Note 'Virtualenv activate script not found; ensure you activate your environment manually'
 }
 
-# Install python deps
-if (Test-Path 'requirements.txt') {
-    Write-Note 'Installing Python requirements'
-    pip install -r requirements.txt
-} elseif (Test-Path 'pyproject.toml') {
-    Write-Note 'pyproject.toml found — using pip to install poetry-managed deps if poetry.lock exists'
-    if (Get-Command poetry -ErrorAction SilentlyContinue) {
-        poetry install
+function Test-CommandExists($cmd) {
+    return (Get-Command $cmd -ErrorAction SilentlyContinue) -ne $null
+}
+
+# Ensure pip is available
+if (-not (Test-CommandExists 'pip')) {
+    Write-Note 'pip not found on PATH; attempting to use python -m pip'
+    if (Test-CommandExists 'python') {
+        function pip { python -m pip @Args }
     } else {
-        Write-Note 'poetry not found; skipping poetry install — consider running `poetry install`'
+        Write-Note 'python not found; cannot install Python packages automatically. Please install Python and pip.'
+    }
+}
+
+# Install python deps by checking requirements.txt and installing missing packages
+if (Test-Path 'requirements.txt') {
+    Write-Note 'Checking Python requirements from requirements.txt'
+    $reqLines = Get-Content requirements.txt | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
+    $missing = @()
+    foreach ($line in $reqLines) {
+        # parse package name (handle ==, >=, <=, ~=, >)
+        $pkg = $line -split '[<>=~!]' | Select-Object -First 1
+        $pkg = $pkg.Trim()
+        if (-not $pkg) { continue }
+        # pip show returns non-zero if not installed
+        $proc = Start-Process -FilePath pip -ArgumentList "show","$pkg" -NoNewWindow -PassThru -Wait -ErrorAction SilentlyContinue
+        if ($proc.ExitCode -ne 0) {
+            $missing += $line
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        Write-Note "Missing packages detected: $($missing -join ', ')"
+        Write-Note 'Installing missing packages via pip install -r requirements.txt'
+        pip install -r requirements.txt
+    } else {
+        Write-Note 'All required Python packages appear to be installed.'
+    }
+} elseif (Test-Path 'pyproject.toml') {
+    Write-Note 'pyproject.toml found — if you use poetry, run `poetry install` manually or install poetry.'
+    if (-not (Test-CommandExists 'poetry')) {
+        Write-Note 'poetry not found; skipping automatic poetry install.'
+    } else {
+        Write-Note 'Running poetry install'
+        poetry install
     }
 } else {
-    Write-Note 'No requirements.txt found — skipping pip install'
+    Write-Note 'No requirements.txt or pyproject.toml found — skipping Python package install.'
 }
 
 # Run Django migrations (best-effort)
@@ -64,10 +99,15 @@ if (Test-Path 'manage.py') {
 if (Test-Path 'package.json') {
     $pkg = Get-Content package.json -Raw
     if ($pkg -match '"tailwind:build"') {
-        Write-Note 'Installing root npm deps for tailwind'
-        npm install
-        Write-Note 'Building tailwind CSS (tailwind:build)'
-        npm run tailwind:build
+        # Ensure node/npm available
+        if (-not (Test-CommandExists 'npm')) {
+            Write-Note 'npm not found on PATH; please install Node.js and npm to build Tailwind.'
+        } else {
+            Write-Note 'Installing root npm deps for tailwind'
+            npm install
+            Write-Note 'Building tailwind CSS (tailwind:build)'
+            npm run tailwind:build
+        }
     } else {
         Write-Note 'No tailwind:build script found in root package.json; skipping'
     }
@@ -78,9 +118,13 @@ $frontendV2 = Join-Path $PSScriptRoot 'frontend_v2'
 if (Test-Path (Join-Path $frontendV2 'package.json')) {
     Write-Note 'Installing frontend_v2 npm deps'
     Push-Location $frontendV2
-    npm install
-    Write-Note 'Starting frontend_v2 dev server in a new PowerShell window (runs `npm run dev`)'
-    Start-Process powershell -ArgumentList "-NoExit","-Command","cd '$frontendV2'; npm run dev"
+    if (-not (Test-CommandExists 'node') -or -not (Test-CommandExists 'npm')) {
+        Write-Note 'Node or npm not found; skipping frontend_v2 install/start. Install Node.js and npm to run the frontend dev server.'
+    } else {
+        npm install
+        Write-Note 'Starting frontend_v2 dev server in a new PowerShell window (runs `npm run dev`)'
+        Start-Process powershell -ArgumentList "-NoExit","-Command","cd '$frontendV2'; npm run dev"
+    }
     Pop-Location
 } else {
     Write-Note 'frontend_v2 not found — skipping frontend dev server start.'

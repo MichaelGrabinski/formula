@@ -60,3 +60,9 @@ DEFAULT_FROM_EMAIL = 'webmaster@example.com'
 ```
 
 For production, configure a real EMAIL_BACKEND and `SALES_EMAIL`.
+
+Troubleshooting dependencies
+
+- `run_all.ps1` checks `requirements.txt` and attempts to install missing packages using `pip` (or `python -m pip`). If you see errors, make sure your Python is on PATH and you have an active virtualenv.
+- The script also verifies `node` and `npm` before attempting frontend tasks. If Node is missing, install it from https://nodejs.org/.
+- If you manage Python deps with `poetry`, run `poetry install` manually instead of relying on `run_all.ps1`.
