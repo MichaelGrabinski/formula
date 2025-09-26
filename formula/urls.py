@@ -8,9 +8,18 @@ from . import views
 
 urlpatterns = (
     [
-        path("", views.HomeView.as_view(), name="home"),
+    # Public site
+    path("", views.PublicHomePageView.as_view(), name="public_home"),
+    path("services/", views.PublicServicesView.as_view(), name="public_services"),
+    path("cars/", views.PublicCarsView.as_view(), name="public_cars"),
+    path("cars/<int:pk>/", views.PublicCarDetailView.as_view(), name="public_car_detail"),
+    path("contact/submit/", views.ContactSubmitView.as_view(), name="contact_submit"),
+    path("login/", views.LoginRedirectView.as_view(), name="login"),
+
+    # Internal dashboard (employees can use admin login, then access personal tools)
+    path("app/", views.HomeView.as_view(), name="internal_home"),
         path("i18n/", include("django.conf.urls.i18n")),
-        path("__debug__", include("debug_toolbar.urls")),
+    path("__debug__/", include("debug_toolbar.urls")),
         path("ai/", views.AIAssistantView.as_view(), name="ai_assistant"),
         path("personal/", include("formula.personal_urls")),
 

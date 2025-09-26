@@ -61,7 +61,14 @@ from django.views import View
 class PublicHomePageView(View):
     """Simple public landing page for Human Futures LLC."""
     def get(self, request, *args, **kwargs):
-        return render(request, 'public_home.html')
+        from .forms import LeadForm
+        from .models import Car
+        cars = list(Car.objects.filter(is_active=True).order_by('-created_at')[:6])
+        return render(request, 'public_home.html', {'lead_form': LeadForm(), 'cars': cars})
+
+
+class LoginRedirectView(RedirectView):
+    url = '/admin/login/'
 
 
 class PublicServicesView(View):
@@ -74,6 +81,13 @@ class PublicCarsView(View):
         from .models import Car
         cars = list(Car.objects.filter(is_active=True).order_by('-created_at')[:50])
         return render(request, 'public_cars.html', {'cars': cars})
+
+
+class PublicCarDetailView(View):
+    def get(self, request, pk, *args, **kwargs):
+        from .models import Car
+        car = get_object_or_404(Car, pk=pk, is_active=True)
+        return render(request, 'public_car_detail.html', {'car': car})
 
 
 class ContactSubmitView(View):
@@ -3507,21 +3521,4 @@ def tv_dashboard(request):
     return render(request, 'dashboard/tv.html', context)
 
 
-# New public views for landing, services, cars pages
-from django.views import View
-
-
-class PublicHomePageView(View):
-    """Simple public landing page for Human Futures LLC."""
-    def get(self, request, *args, **kwargs):
-        return render(request, 'public_home.html')
-
-
-class PublicServicesView(View):
-    def get(self, request, *args, **kwargs):
-        return render(request, 'public_services.html')
-
-
-class PublicCarsView(View):
-    def get(self, request, *args, **kwargs):
-        return render(request, 'public_cars.html')
+# (Removed duplicate public view stubs defined later to prevent redefinition)

@@ -111,7 +111,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django.contrib.auth.middleware.LoginRequiredMiddleware",
+    # Require login only for internal sections; public pages are exempt
+    "formula.middleware.PublicLoginExemptMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
@@ -131,7 +132,7 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
-            path.normpath(path.join(BASE_DIR, "formula/templates")),
+            path.normpath(path.join(BASE_DIR, "templates")),
             path.normpath(path.join(BASE_DIR, "personal-management-platform/templates")),
         ],
         "APP_DIRS": True,

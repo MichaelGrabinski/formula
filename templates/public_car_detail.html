@@ -5,11 +5,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ car.title }} — Human Futures LLC</title>
-  <link rel="stylesheet" href="{% static 'css/landing.css' %}" />
+  <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
 </head>
 <body class="bg-gray-50 text-gray-900">
   <div class="max-w-4xl mx-auto px-6 py-10">
-    <a href="/cars/" class="text-gray-600 hover:underline">← Back to cars</a>
+    <a href="{% url 'public_cars' %}" class="text-gray-600 hover:underline">← Back to cars</a>
     <div class="mt-4 bg-white rounded-lg shadow overflow-hidden">
       {% if car.image %}
         <img src="{{ car.image.url }}" alt="{{ car.title }}" class="w-full h-72 object-cover" />
@@ -22,7 +22,7 @@
         <p class="mt-4 text-gray-700">{{ car.description }}</p>
 
         <div class="mt-6">
-          <a href="/services/" class="inline-block bg-teal-600 text-white px-4 py-2 rounded">Contact about this vehicle</a>
+          <a href="{% url 'public_services' %}" class="inline-block bg-teal-600 text-white px-4 py-2 rounded">Contact about this vehicle</a>
         </div>
       </div>
     </div>
